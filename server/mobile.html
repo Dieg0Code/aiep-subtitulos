@@ -206,6 +206,40 @@
         font: inherit;
         resize: vertical;
       }
+      .capture-mode {
+        padding: 6px 16px 16px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .capture-mode label {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 8px 0;
+        cursor: pointer;
+      }
+      .capture-mode input[type="radio"] {
+        margin-top: 4px;
+        accent-color: var(--aiep-red);
+        flex-shrink: 0;
+      }
+      .capture-mode strong {
+        display: block;
+        color: var(--ink);
+        font-size: 0.95rem;
+        font-weight: 900;
+        line-height: 1.3;
+      }
+      .capture-mode small {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 700;
+        line-height: 1.35;
+      }
       .hint {
         margin: 0;
         color: var(--muted);
@@ -252,11 +286,31 @@
       </button>
 
       <details>
+        <summary>Motor de captura</summary>
+        <div class="capture-mode">
+          <label>
+            <input type="radio" name="capture-mode" value="speech" checked />
+            <span>
+              <strong>Reconocimiento web (recomendado)</strong>
+              <small>Subtitulos inmediatos en el PC. Requiere Chrome Android y pantalla activa.</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="capture-mode" value="pcm" />
+            <span>
+              <strong>Streaming PCM al PC (experimental)</strong>
+              <small>Manda audio crudo para el motor del PC (Whisper / OpenAI). Aun no hay motor instalado, sin subtitulos hasta proxima version.</small>
+            </span>
+          </label>
+        </div>
+      </details>
+
+      <details>
         <summary>Modo respaldo escrito</summary>
         <textarea id="manual" placeholder="Si el microfono no funciona, escribe aqui y el texto ira al PC."></textarea>
       </details>
 
-      <p class="hint">El audio se envia al PC del docente a traves de un relay en la nube. Puedes bloquear la pantalla durante la clase: el navegador intenta mantener la captura activa, pero en algunos celulares Android puede detenerse tras unos minutos.</p>
+      <p class="hint">El audio o texto se envia al PC del docente a traves de un relay en la nube. Puedes bloquear la pantalla durante la clase: el navegador intenta mantener la captura activa, pero en algunos celulares Android puede detenerse tras unos minutos.</p>
     </main>
 
     <script>
@@ -291,10 +345,47 @@
       }
 
       function bootstrap(sessionId) {
+        const TARGET_SAMPLE_RATE = 16000;
+        const BATCH_SAMPLES = 1600; // ~100ms at 16kHz
+        const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const CAPTURE_MODE_KEY = "aiep-capture-mode";
+
+        const getCaptureMode = () => {
+          const checked = document.querySelector("input[name=\"capture-mode\"]:checked");
+          return checked ? checked.value : "speech";
+        };
+
+        // Restore last choice from localStorage
+        try {
+          const saved = localStorage.getItem(CAPTURE_MODE_KEY);
+          if (saved === "pcm" || saved === "speech") {
+            const target = document.querySelector(`input[name="capture-mode"][value="${saved}"]`);
+            if (target) target.checked = true;
+          }
+        } catch (e) {}
+
+        // Persist choice + disable mid-capture switching (requires stop/start)
+        document.querySelectorAll('input[name="capture-mode"]').forEach((radio) => {
+          radio.addEventListener("change", () => {
+            try { localStorage.setItem(CAPTURE_MODE_KEY, radio.value); } catch (e) {}
+          });
+        });
+
+        // If Web Speech isn't supported, force PCM and disable the radio
+        if (!SpeechRecognitionCtor) {
+          const speechRadio = document.querySelector("input[name=\"capture-mode\"][value=\"speech\"]");
+          const pcmRadio = document.querySelector("input[name=\"capture-mode\"][value=\"pcm\"]");
+          if (speechRadio) speechRadio.disabled = true;
+          if (pcmRadio) pcmRadio.checked = true;
+        }
+
         let socket = null;
         let listening = false;
         let mediaStream = null;
-        let mediaRecorder = null;
+        let audioCtx = null;
+        let workletNode = null;
+        let sourceNode = null;
+        let actualSampleRate = 0;
         let silentCtx = null;
         let silentSource = null;
         let chunksSent = 0;
@@ -302,6 +393,9 @@
         let reconnectTimer = null;
         let reconnectDelay = 1000;
         let sessionGone = false;
+        let recognition = null;
+        let recognitionLastText = "";
+        let recognitionShouldRun = false;
 
         const send = (payload) => {
           if (socket && socket.readyState === WebSocket.OPEN) {
@@ -364,20 +458,32 @@
           wakeLock = null;
         };
 
-        const pickRecorderMime = () => {
-          const candidates = [
-            "audio/webm;codecs=opus",
-            "audio/webm",
-            "audio/ogg;codecs=opus",
-            "audio/mp4",
-          ];
-          for (const candidate of candidates) {
-            if (window.MediaRecorder && MediaRecorder.isTypeSupported(candidate)) {
-              return candidate;
+        const PCM_WORKLET_SOURCE = `
+          class PCMProcessor extends AudioWorkletProcessor {
+            constructor() {
+              super();
+              this.buffer = new Int16Array(${BATCH_SAMPLES});
+              this.cursor = 0;
+            }
+            process(inputs) {
+              const input = inputs[0];
+              if (!input || !input[0]) return true;
+              const ch = input[0];
+              for (let i = 0; i < ch.length; i++) {
+                let s = ch[i];
+                if (s > 1) s = 1; else if (s < -1) s = -1;
+                this.buffer[this.cursor++] = s < 0 ? s * 0x8000 : s * 0x7fff;
+                if (this.cursor >= this.buffer.length) {
+                  this.port.postMessage(this.buffer.buffer, [this.buffer.buffer]);
+                  this.buffer = new Int16Array(${BATCH_SAMPLES});
+                  this.cursor = 0;
+                }
+              }
+              return true;
             }
           }
-          return "";
-        };
+          registerProcessor('pcm-processor', PCMProcessor);
+        `;
 
         const startSilentLoop = async () => {
           try {
@@ -406,8 +512,157 @@
           silentCtx = null;
         };
 
-        const startCapture = async () => {
-          if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
+        const normalizeWord = (word) =>
+          word
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[̀-ͯ]/g, "")
+            .replace(/[^\p{L}\p{N}]/gu, "");
+
+        const sameWord = (a, b) => normalizeWord(a) === normalizeWord(b);
+
+        const sameSequence = (words, leftStart, rightStart, length) => {
+          for (let offset = 0; offset < length; offset++) {
+            if (!sameWord(words[leftStart + offset], words[rightStart + offset])) return false;
+          }
+          return true;
+        };
+
+        const collapseAdjacentRepeats = (input) => {
+          const words = [...input];
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (let size = Math.min(8, Math.floor(words.length / 2)); size >= 1; size--) {
+              for (let index = 0; index + size * 2 <= words.length; index++) {
+                if (sameSequence(words, index, index + size, size)) {
+                  words.splice(index, size);
+                  changed = true;
+                  break;
+                }
+              }
+              if (changed) break;
+            }
+          }
+          return words;
+        };
+
+        const collapseGrowingRepeats = (input) => {
+          let words = [...input];
+          for (let size = Math.min(10, Math.floor(words.length / 2)); size >= 2; size--) {
+            for (let index = 0; index + size < words.length; index++) {
+              const nextStart = index + size;
+              let overlap = 0;
+              while (
+                overlap < size &&
+                nextStart + overlap < words.length &&
+                sameWord(words[index + overlap], words[nextStart + overlap])
+              ) {
+                overlap++;
+              }
+              if (overlap >= Math.min(size, 3)) {
+                words.splice(index, overlap);
+                return collapseGrowingRepeats(collapseAdjacentRepeats(words));
+              }
+            }
+          }
+          return words;
+        };
+
+        const cleanSubtitle = (raw) => {
+          const words = raw.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+          return collapseGrowingRepeats(collapseAdjacentRepeats(words)).join(" ");
+        };
+
+        const tailWords = (raw, maxWords) => {
+          const words = raw.split(" ").filter(Boolean);
+          return words.slice(Math.max(0, words.length - maxWords)).join(" ");
+        };
+
+        const startRecognition = () => {
+          if (!SpeechRecognitionCtor) return false;
+          if (recognition) return true;
+          try {
+            recognition = new SpeechRecognitionCtor();
+          } catch (error) {
+            recognition = null;
+            return false;
+          }
+          recognition.lang = "es-CL";
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognitionLastText = "";
+
+          recognition.onresult = (event) => {
+            const parts = [];
+            let hasInterim = false;
+            for (let index = event.resultIndex; index < event.results.length; index++) {
+              const result = event.results[index];
+              const phrase = result[0].transcript.trim();
+              if (!phrase) continue;
+              parts.push(phrase);
+              hasInterim = hasInterim || !result.isFinal;
+            }
+            if (parts.length === 0 && event.results.length > 0) {
+              const lastResult = event.results[event.results.length - 1];
+              parts.push(lastResult[0].transcript.trim());
+              hasInterim = !lastResult.isFinal;
+            }
+            const text = tailWords(cleanSubtitle(parts.join(" ")), 18);
+            if (text === recognitionLastText) return;
+            recognitionLastText = text;
+            setTranscript(text || "Escuchando...", !text);
+            send({ kind: "caption", text, isFinal: !hasInterim });
+          };
+
+          recognition.onstart = () => {
+            send({ kind: "status", text: "speech:started" });
+          };
+
+          recognition.onerror = (event) => {
+            send({ kind: "status", text: `speech:error:${event.error}` });
+            if (event.error === "no-speech" || event.error === "aborted") return;
+            if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+              recognitionShouldRun = false;
+              return;
+            }
+          };
+
+          recognition.onend = () => {
+            send({ kind: "status", text: "speech:end" });
+            if (recognitionShouldRun) {
+              try { recognition.start(); } catch (error) {}
+            }
+          };
+
+          recognitionShouldRun = true;
+          try {
+            recognition.start();
+            send({ kind: "status", text: "speech:starting" });
+          } catch (error) {
+            send({ kind: "status", text: `speech:start-throw:${error?.name || "unknown"}` });
+            recognitionShouldRun = false;
+            return false;
+          }
+          return true;
+        };
+
+        const stopRecognition = () => {
+          recognitionShouldRun = false;
+          try { recognition?.stop(); } catch (error) {}
+          try { recognition?.abort?.(); } catch (error) {}
+          recognition = null;
+          recognitionLastText = "";
+        };
+
+        // Chrome Android no permite que getUserMedia (para AudioWorklet PCM)
+        // y SpeechRecognition compartan el microfono en la misma pestana.
+        // Por eso los dos modos son mutuamente exclusivos.
+        let currentMode = "speech";
+
+        const startPcmCapture = async () => {
+          const AudioCtor = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtor || !navigator.mediaDevices?.getUserMedia) {
             setStatus("offline", "Este navegador no soporta captura de audio. Usa Chrome en Android.");
             return false;
           }
@@ -418,46 +673,80 @@
                 noiseSuppression: true,
                 autoGainControl: true,
                 channelCount: 1,
+                sampleRate: TARGET_SAMPLE_RATE,
               },
             });
           } catch (error) {
             setStatus("offline", "Permiso de microfono denegado.");
             return false;
           }
-          const mime = pickRecorderMime();
+
           try {
-            mediaRecorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream);
+            audioCtx = new AudioCtor({ sampleRate: TARGET_SAMPLE_RATE });
           } catch (error) {
-            setStatus("offline", `No se pudo iniciar grabador: ${error?.message || error}`);
+            audioCtx = new AudioCtor();
+          }
+          actualSampleRate = audioCtx.sampleRate;
+
+          try {
+            const blob = new Blob([PCM_WORKLET_SOURCE], { type: "application/javascript" });
+            const blobUrl = URL.createObjectURL(blob);
+            await audioCtx.audioWorklet.addModule(blobUrl);
+            URL.revokeObjectURL(blobUrl);
+          } catch (error) {
+            setStatus("offline", `No se pudo cargar el worklet de audio: ${error?.message || error}`);
             return false;
           }
-          mediaRecorder.addEventListener("dataavailable", async (event) => {
-            if (!event.data || event.data.size === 0) return;
+
+          try {
+            workletNode = new AudioWorkletNode(audioCtx, "pcm-processor");
+            sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+            sourceNode.connect(workletNode);
+          } catch (error) {
+            setStatus("offline", `No se pudo iniciar la captura: ${error?.message || error}`);
+            return false;
+          }
+
+          workletNode.port.onmessage = (event) => {
             if (!socket || socket.readyState !== WebSocket.OPEN) return;
             try {
-              const buffer = await event.data.arrayBuffer();
-              socket.send(buffer);
+              socket.send(event.data);
               chunksSent += 1;
-              send({ kind: "status", text: `chunks:${chunksSent}` });
+              if (chunksSent % 10 === 0) {
+                send({ kind: "status", text: `chunks:${chunksSent}` });
+              }
             } catch (error) {}
-          });
-          mediaRecorder.addEventListener("error", (event) => {
-            setStatus("offline", `Error de grabacion: ${event?.error?.message || "desconocido"}`);
-          });
-          try {
-            mediaRecorder.start(1500);
-          } catch (error) {
-            setStatus("offline", `No se pudo iniciar la grabacion: ${error?.message || error}`);
+          };
+
+          send({ kind: "status", text: `sampleRate:${actualSampleRate}` });
+          return true;
+        };
+
+        const startCapture = async () => {
+          currentMode = getCaptureMode();
+          await startSilentLoop();
+          if (currentMode === "pcm") {
+            return await startPcmCapture();
+          }
+          // default: web speech
+          if (!startRecognition()) {
+            send({ kind: "status", text: "speech:unavailable" });
+            setStatus("offline", "Reconocimiento web no disponible. Usa el modo PCM o el respaldo escrito.");
             return false;
           }
-          await startSilentLoop();
           return true;
         };
 
         const stopCapture = async () => {
-          try { mediaRecorder && mediaRecorder.state !== "inactive" && mediaRecorder.stop(); } catch (error) {}
+          stopRecognition();
+          try { workletNode?.port.close(); } catch (error) {}
+          try { workletNode?.disconnect(); } catch (error) {}
+          try { sourceNode?.disconnect(); } catch (error) {}
+          try { await audioCtx?.close(); } catch (error) {}
           try { mediaStream?.getTracks().forEach((track) => track.stop()); } catch (error) {}
-          mediaRecorder = null;
+          workletNode = null;
+          sourceNode = null;
+          audioCtx = null;
           mediaStream = null;
           await stopSilentLoop();
         };
@@ -474,8 +763,15 @@
             if (silentCtx?.state === "suspended") {
               try { await silentCtx.resume(); } catch (error) {}
             }
-            if (mediaRecorder && mediaRecorder.state === "inactive") {
-              try { await startCapture(); } catch (error) {}
+            if (currentMode === "pcm") {
+              if (audioCtx?.state === "suspended") {
+                try { await audioCtx.resume(); } catch (error) {}
+              }
+              if (!audioCtx || audioCtx.state === "closed") {
+                try { await startCapture(); } catch (error) {}
+              }
+            } else if (currentMode === "speech" && recognitionShouldRun && !recognition) {
+              startRecognition();
             }
           }
         });

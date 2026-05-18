@@ -449,17 +449,19 @@ button.btn-ghost:hover {
   flex: 1;
   min-height: 140px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: flex-end;
   padding: 22px 28px;
   border-radius: 8px;
   background: #071d33;
   color: white;
   font-size: clamp(1.3rem, 2.6vw, 2.2rem);
   font-weight: 900;
-  line-height: 1.15;
-  text-align: center;
-  text-wrap: balance;
+  line-height: 1.25;
+  text-align: start;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .transcript-log {
@@ -611,8 +613,8 @@ button.btn-ghost:hover {
   min-height: 0;
   height: 100%;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: flex-end;
   margin: 0 auto;
   padding: 18px 36px;
   border: 1px solid rgba(255, 255, 255, 0.24);
@@ -621,10 +623,11 @@ button.btn-ghost:hover {
   color: white;
   font-size: 38px;
   font-weight: 900;
-  line-height: 1.08;
-  text-align: center;
-  text-wrap: balance;
+  line-height: 1.18;
+  text-align: start;
   overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
   cursor: move;
   user-select: none;

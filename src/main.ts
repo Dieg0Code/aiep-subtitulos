@@ -197,11 +197,14 @@ async function renderControl(root: HTMLDivElement) {
   });
 
   const audioStats = { totalBytes: 0, chunks: 0, lastUpdate: 0 };
+  const previewPacer = createPacedSubtitle(
+    document.querySelector<HTMLDivElement>("#preview-text"),
+  );
   wireCaptionListeners({
     onCaption: (payload) => {
-      const preview = document.querySelector<HTMLDivElement>("#preview-text");
-      if (preview) preview.textContent = payload.text || "Escuchando...";
-      maybeSaveTranscript(payload);
+      const text = normalizeCaption(payload.text);
+      previewPacer.set(text || "Escuchando...", { instant: !text });
+      maybeSaveTranscript({ text, isFinal: payload.isFinal });
     },
     onStatus: updatePhoneStatus,
     onMobileUrl: updateMobileUrl,
@@ -221,6 +224,157 @@ function renderAudioStats(stats: { totalBytes: number; chunks: number; lastUpdat
   const kb = (stats.totalBytes / 1024).toFixed(1);
   const seconds = Math.round((Date.now() - stats.lastUpdate) / 1000);
   el.textContent = `Audio recibido: ${kb} KB en ${stats.chunks} chunk(s) — ultimo hace ${seconds}s`;
+}
+
+// Post-procesamiento de captions del speech engine. Web Speech (y otros)
+// suelen escuchar acronimos como palabras separadas o con simbolos. Aqui
+// reescribimos a la forma esperada antes de mostrar.
+//
+// Patrones agrupados (insensibles a mayusculas, con bordes de palabra). El
+// orden importa: las variaciones especificas van primero.
+const CAPTION_NORMALIZATIONS: Array<[RegExp, string]> = [
+  // AIEP (institucion docente). Variantes: "a y e p", "a&e", "ayep", "aip",
+  // "a i e p", "a e i p", "ayepe".
+  [/\ba\s*[&y]\s*e\s*[&y]?\s*p\b/gi, "AIEP"],
+  [/\ba\s*[&y]\s*e\b/gi, "AIEP"],
+  [/\ba\s*i\s*e\s*p\b/gi, "AIEP"],
+  [/\ba\s*e\s*i\s*p\b/gi, "AIEP"],
+  [/\bayepe?\b/gi, "AIEP"],
+  [/\baiepe?\b/gi, "AIEP"],
+  [/\baip\b/gi, "AIEP"],
+
+  // Otros acronimos comunes en docencia tecnica chilena
+  [/\bc\s*f\s*t\b/gi, "CFT"],
+  [/\bi\s*p\b/gi, "IP"],
+  [/\bduoc\s*u\s*c\b/gi, "Duoc UC"],
+  [/\binacap\b/gi, "INACAP"],
+];
+
+function normalizeCaption(text: string): string {
+  if (!text) return text;
+  let out = text;
+  for (const [re, replacement] of CAPTION_NORMALIZATIONS) {
+    out = out.replace(re, replacement);
+  }
+  // Colapsa espacios duplicados que los reemplazos puedan haber dejado
+  return out.replace(/\s+/g, " ").trim();
+}
+
+// Paced subtitle: drip-feed the displayed text at a comfortable reading rate
+// (~4 words/sec base, up to ~8 wps briefly to catch up). Matches how live
+// caption tools (Otter, Live Transcribe) keep subtitles readable when the
+// speaker is faster than the reader.
+function createPacedSubtitle(el: HTMLElement | null) {
+  const TICK_MS = 240; // base rate ~= 4 words/sec
+  const FAST_BACKLOG = 12; // start taking 2 words/tick once this far behind
+  const SKIP_BACKLOG = 28; // collapse harder past this many backlog words
+  const SKIP_KEEP_TAIL = 12; // how much of the backlog to leave after a skip
+  const MAX_DISPLAYED_WORDS = 80; // hard cap so memory + DOM don't grow forever
+
+  let target = "";
+  let displayed = "";
+  let displayedIsPlaceholder = false;
+  let intervalId: number | null = null;
+
+  const apply = (text: string) => {
+    if (!el) return;
+    if (el.textContent === text) return;
+    el.textContent = text;
+  };
+
+  const stop = () => {
+    if (intervalId !== null) {
+      window.clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+
+  // Longest suffix of `d` that equals a prefix of `t`. Used to track how much
+  // of the latest target the displayed text already covers, even when the
+  // mobile dedup sliding-window drops words off the front of target.
+  const findOverlap = (d: string[], t: string[]): number => {
+    const max = Math.min(d.length, t.length);
+    for (let n = max; n > 0; n--) {
+      let ok = true;
+      for (let i = 0; i < n; i++) {
+        if (d[d.length - n + i] !== t[i]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return n;
+    }
+    return 0;
+  };
+
+  const tick = () => {
+    if (displayed === target) {
+      stop();
+      return;
+    }
+    const tWords = target.trim().split(/\s+/).filter(Boolean);
+    if (tWords.length === 0) {
+      displayed = target;
+      apply(displayed);
+      stop();
+      return;
+    }
+    const dWords = displayed.trim().split(/\s+/).filter(Boolean);
+    const overlap = findOverlap(dWords, tWords);
+    const remaining = tWords.slice(overlap);
+    if (remaining.length === 0) {
+      stop();
+      return;
+    }
+    // Si el texto mostrado no comparte nada con el target (ej: viene de un
+    // placeholder, hubo silencio largo y el dedup movil tiro la ventana
+    // entera), arrancamos limpio en vez de apendear "Escuchando..." + nuevo.
+    const baseWords = overlap === 0 && dWords.length > 0 ? [] : dWords;
+    let take = 1;
+    if (remaining.length > FAST_BACKLOG) take = 2;
+    if (remaining.length > SKIP_BACKLOG) take = remaining.length - SKIP_KEEP_TAIL;
+    const merged = [...baseWords, ...remaining.slice(0, take)];
+    if (merged.length > MAX_DISPLAYED_WORDS) {
+      merged.splice(0, merged.length - MAX_DISPLAYED_WORDS);
+    }
+    displayed = merged.join(" ");
+    apply(displayed);
+  };
+
+  const start = () => {
+    if (intervalId !== null) return;
+    intervalId = window.setInterval(tick, TICK_MS);
+  };
+
+  return {
+    set(text: string, opts: { instant?: boolean } = {}) {
+      target = text;
+      if (opts.instant) {
+        displayed = text;
+        displayedIsPlaceholder = true;
+        apply(displayed);
+        stop();
+        return;
+      }
+      // Si lo ultimo mostrado era un placeholder ("Escuchando...") arrancamos
+      // limpio en lugar de apendear las palabras nuevas al placeholder.
+      if (displayedIsPlaceholder) {
+        displayed = "";
+        displayedIsPlaceholder = false;
+      }
+      if (target === displayed) {
+        stop();
+        return;
+      }
+      start();
+    },
+    reset() {
+      target = "";
+      displayed = "";
+      displayedIsPlaceholder = false;
+      stop();
+    },
+  };
 }
 
 function renderOverlay(root: HTMLDivElement) {
@@ -269,10 +423,12 @@ function renderOverlay(root: HTMLDivElement) {
     invoke("close_overlay");
   });
 
+  const overlayPacer = createPacedSubtitle(subtitle);
   wireCaptionListeners({
     onCaption: (payload) => {
       if (paused || !subtitle) return;
-      subtitle.textContent = payload.text || "Escuchando...";
+      const text = normalizeCaption(payload.text);
+      overlayPacer.set(text || "Escuchando...", { instant: !text });
       subtitle.classList.toggle("final", payload.isFinal);
     },
   });

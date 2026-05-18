@@ -265,6 +265,143 @@ func TestHub_GuestEmptySessionID(t *testing.T) {
 	}
 }
 
+func TestValidSessionID(t *testing.T) {
+	cases := []struct {
+		id   string
+		want bool
+	}{
+		{"ABCDEF", true},
+		{"234567", true},
+		{"abcdef", false}, // lowercase rejected (we uppercase in handler)
+		{"ABCDE", false},  // too short
+		{"ABCDEFG", false}, // too long
+		{"ABCD0E", false},  // 0 not in alphabet
+		{"ABCDIE", false},  // I not in alphabet
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := validSessionID(c.id); got != c.want {
+			t.Errorf("validSessionID(%q) = %v, want %v", c.id, got, c.want)
+		}
+	}
+}
+
+func TestHub_HostResumeWithCid(t *testing.T) {
+	base, hub := newTestServer(t)
+
+	// First connect: get an id
+	host1, id := connectHost(t, base)
+	guest := connectGuest(t, base, id)
+	defer guest.Close(websocket.StatusInternalError, "")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, _, err := host1.Read(ctx); err != nil {
+		t.Fatalf("drain phone-connected: %v", err)
+	}
+
+	// Reconnect with ?cid=<id>: should resume the same session.
+	wsURL := "ws" + strings.TrimPrefix(base, "http") + "/ws/host?cid=" + id
+	host2, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial host2: %v", err)
+	}
+	defer host2.Close(websocket.StatusNormalClosure, "")
+	host2.SetReadLimit(maxReadBytes)
+	_, data, err := host2.Read(ctx)
+	if err != nil {
+		t.Fatalf("host2 read session: %v", err)
+	}
+	var msg sessionMsg
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if msg.ID != id {
+		t.Errorf("resumed id = %q, want %q", msg.ID, id)
+	}
+
+	// host1 should now be closed by the relay (replaced).
+	_, _, err = host1.Read(ctx)
+	if err == nil {
+		t.Fatalf("expected host1 to be closed after replacement")
+	}
+
+	// Session should still exist in the hub under the same id.
+	if hub.lookup(id) == nil {
+		t.Errorf("session %q missing from hub after resume", id)
+	}
+
+	// Guest should still be able to send to (new) host.
+	payload := []byte{0x01, 0x02, 0x03}
+	if err := guest.Write(ctx, websocket.MessageBinary, payload); err != nil {
+		t.Fatalf("guest write: %v", err)
+	}
+	mt, got, err := host2.Read(ctx)
+	if err != nil {
+		t.Fatalf("host2 read binary: %v", err)
+	}
+	if mt != websocket.MessageBinary || !bytes.Equal(got, payload) {
+		t.Errorf("relay broken after resume")
+	}
+}
+
+func TestHub_HostCidWithUnknownIDCreatesIt(t *testing.T) {
+	base, hub := newTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	chosen := "ZZ2345"
+	wsURL := "ws" + strings.TrimPrefix(base, "http") + "/ws/host?cid=" + chosen
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	conn.SetReadLimit(maxReadBytes)
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var msg sessionMsg
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if msg.ID != chosen {
+		t.Errorf("id = %q, want %q", msg.ID, chosen)
+	}
+	if hub.lookup(chosen) == nil {
+		t.Errorf("session %q missing", chosen)
+	}
+}
+
+func TestHub_HostCidInvalidFallsBackToRandom(t *testing.T) {
+	base, _ := newTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	wsURL := "ws" + strings.TrimPrefix(base, "http") + "/ws/host?cid=invalid-id"
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "")
+	conn.SetReadLimit(maxReadBytes)
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var msg sessionMsg
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(msg.ID) != idLength {
+		t.Errorf("got id %q, expected random 6-char id", msg.ID)
+	}
+	if msg.ID == "invalid-id" {
+		t.Errorf("invalid cid was accepted")
+	}
+}
+
 func TestHub_HostDisconnectKillsGuest(t *testing.T) {
 	base, hub := newTestServer(t)
 	host, id := connectHost(t, base)

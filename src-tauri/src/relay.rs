@@ -54,16 +54,15 @@ impl RelayState {
         self.mobile_url.read().unwrap().clone()
     }
 
+    fn session_id(&self) -> Option<String> {
+        self.session_id.read().unwrap().clone()
+    }
+
     fn set_session(&self, id: String, base_url: &str) -> String {
         let url = format!("{}/m?s={}", base_url.trim_end_matches('/'), id);
         *self.session_id.write().unwrap() = Some(id);
         *self.mobile_url.write().unwrap() = url.clone();
         url
-    }
-
-    fn clear_session(&self) {
-        *self.session_id.write().unwrap() = None;
-        self.mobile_url.write().unwrap().clear();
     }
 }
 
@@ -79,9 +78,17 @@ pub fn spawn_relay_client(app: AppHandle, cfg: RelayConfig, state: Arc<RelayStat
         let mut backoff = BACKOFF_MIN;
         loop {
             let _ = app.emit("relay-status", "connecting");
-            info!(url = %cfg.ws_url, "relay: connecting");
 
-            let request = match (&cfg.ws_url).into_client_request() {
+            // Resume the previous session id (if any) so the phone QR stays
+            // valid across reconnects. The relay accepts `?cid=<id>` and will
+            // either reattach to or recreate that session.
+            let ws_url = match state.session_id() {
+                Some(id) => format!("{}?cid={}", cfg.ws_url, id),
+                None => cfg.ws_url.clone(),
+            };
+            info!(url = %ws_url, "relay: connecting");
+
+            let request = match ws_url.as_str().into_client_request() {
                 Ok(req) => req,
                 Err(err) => {
                     warn!(?err, "relay: invalid url, stopping client");
@@ -96,8 +103,6 @@ pub fn spawn_relay_client(app: AppHandle, cfg: RelayConfig, state: Arc<RelayStat
                     let _ = app.emit("relay-status", "online");
                     backoff = BACKOFF_MIN;
                     run_session(&app, &state, &cfg, stream).await;
-                    state.clear_session();
-                    let _ = app.emit("mobile-url-update", "");
                 }
                 Err(err) => {
                     warn!(?err, "relay: connect failed");

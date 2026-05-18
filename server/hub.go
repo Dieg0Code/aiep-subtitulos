@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +37,12 @@ func (s *Session) Host() *websocket.Conn {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.host
+}
+
+func (s *Session) isCurrentHost(c *websocket.Conn) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.host == c
 }
 
 // WriteHost serializes writes to the host conn. The relay can receive writes
@@ -112,6 +119,58 @@ func (h *Hub) create(host *websocket.Conn) *Session {
 	}
 }
 
+// attachOrCreate either resumes an existing session (replacing its host conn)
+// or creates a fresh one. Resume happens when the host supplies a `cid` that
+// matches a registered session. The previous host conn is closed so its
+// goroutine exits cleanly. Returns (session, resumed).
+func (h *Hub) attachOrCreate(host *websocket.Conn, requestedID string) (*Session, bool) {
+	if validSessionID(requestedID) {
+		h.mu.Lock()
+		if existing, ok := h.sessions[requestedID]; ok {
+			previous := existing.replaceHost(host)
+			h.mu.Unlock()
+			if previous != nil {
+				// Close in a goroutine: coder/websocket.Close performs a close
+				// handshake that can block for seconds, and we don't want to
+				// stall the new host's setup.
+				go func() {
+					_ = previous.Close(websocket.StatusPolicyViolation, "host replaced")
+				}()
+			}
+			return existing, true
+		}
+		s := &Session{ID: requestedID, host: host}
+		h.sessions[requestedID] = s
+		h.mu.Unlock()
+		return s, false
+	}
+	return h.create(host), false
+}
+
+// replaceHost swaps the host conn under the session locks. Returns the old
+// conn (if any) so the caller can close it.
+func (s *Session) replaceHost(next *websocket.Conn) *websocket.Conn {
+	s.hostWriteMu.Lock()
+	defer s.hostWriteMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := s.host
+	s.host = next
+	return previous
+}
+
+func validSessionID(id string) bool {
+	if len(id) != idLength {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if !strings.ContainsRune(idAlphabet, rune(id[i])) {
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Hub) lookup(id string) *Session {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -137,6 +196,7 @@ func acceptOptions() *websocket.AcceptOptions {
 }
 
 func (h *Hub) HandleHost(w http.ResponseWriter, r *http.Request) {
+	requestedID := strings.ToUpper(r.URL.Query().Get("cid"))
 	conn, err := websocket.Accept(w, r, acceptOptions())
 	if err != nil {
 		slog.Warn("host accept failed", "err", err)
@@ -144,16 +204,23 @@ func (h *Hub) HandleHost(w http.ResponseWriter, r *http.Request) {
 	}
 	conn.SetReadLimit(maxReadBytes)
 
-	session := h.create(conn)
-	slog.Info("host connected", "session", session.ID, "remote", r.RemoteAddr)
+	session, resumed := h.attachOrCreate(conn, requestedID)
+	slog.Info("host connected", "session", session.ID, "resumed", resumed, "remote", r.RemoteAddr)
 
 	defer func() {
-		h.remove(session.ID)
-		if g := session.Guest(); g != nil {
-			_ = g.Close(websocket.StatusGoingAway, "host left")
-		}
 		_ = conn.Close(websocket.StatusNormalClosure, "")
-		slog.Info("host disconnected", "session", session.ID)
+		// Only retire the session if this conn is still the active host. A
+		// reconnection may have already replaced us with a fresh conn; in that
+		// case the new goroutine owns the session lifecycle now.
+		if session.isCurrentHost(conn) {
+			h.remove(session.ID)
+			if g := session.Guest(); g != nil {
+				_ = g.Close(websocket.StatusGoingAway, "host left")
+			}
+			slog.Info("host disconnected", "session", session.ID)
+		} else {
+			slog.Info("host disconnected (already replaced)", "session", session.ID)
+		}
 	}()
 
 	ctx, cancel := context.WithCancel(r.Context())
