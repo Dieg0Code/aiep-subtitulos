@@ -412,6 +412,22 @@
           }, reconnectDelay);
         };
 
+        // Force-close any half-open socket and reopen immediately. Used when
+        // returning from background/locked screen, where Chrome may have left
+        // the WS in a wedged state and the throttled reconnect timer would
+        // take up to a minute to fire.
+        const forceReconnect = (reason) => {
+          if (sessionGone) return;
+          clearTimeout(reconnectTimer);
+          reconnectDelay = 500;
+          if (socket) {
+            try { socket.close(); } catch (e) {}
+            socket = null;
+          }
+          setStatus("reconnecting", reason || "Reanudando conexion...");
+          connectSocket();
+        };
+
         const connectSocket = () => {
           if (sessionGone) return;
           if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
@@ -751,28 +767,58 @@
           await stopSilentLoop();
         };
 
-        document.addEventListener("visibilitychange", async () => {
-          if (document.visibilityState !== "visible") return;
+        const resumeFromBackground = async (reason) => {
+          // Don't trust the existing socket — Chrome Android often leaves it
+          // in a wedged state after backgrounding. Close and reopen.
           if (!socket || socket.readyState !== WebSocket.OPEN) {
-            clearTimeout(reconnectTimer);
-            reconnectDelay = 1000;
-            connectSocket();
+            forceReconnect(reason);
           }
-          if (listening) {
-            if (!wakeLock) await requestWakeLock();
-            if (silentCtx?.state === "suspended") {
-              try { await silentCtx.resume(); } catch (error) {}
+          if (!listening) return;
+          if (!wakeLock) await requestWakeLock();
+          if (silentCtx?.state === "suspended") {
+            try { await silentCtx.resume(); } catch (error) {}
+          }
+          if (currentMode === "pcm") {
+            if (audioCtx?.state === "suspended") {
+              try { await audioCtx.resume(); } catch (error) {}
             }
-            if (currentMode === "pcm") {
-              if (audioCtx?.state === "suspended") {
-                try { await audioCtx.resume(); } catch (error) {}
-              }
-              if (!audioCtx || audioCtx.state === "closed") {
-                try { await startCapture(); } catch (error) {}
-              }
-            } else if (currentMode === "speech" && recognitionShouldRun && !recognition) {
-              startRecognition();
+            if (!audioCtx || audioCtx.state === "closed") {
+              try { await startCapture(); } catch (error) {}
             }
+          } else if (currentMode === "speech" && recognitionShouldRun) {
+            // Re-crear el reconocimiento siempre al volver: si quedo wedged
+            // durante el background, start() habria tirado InvalidStateError
+            // y onend nunca disparo. Mas barato resetear que diagnosticar.
+            stopRecognition();
+            recognitionShouldRun = true;
+            startRecognition();
+          }
+        };
+
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState !== "visible") return;
+          resumeFromBackground();
+        });
+
+        // bfcache restore (Chrome aggressively caches when you switch tabs and
+        // come back) — pageshow is the right hook here, not load.
+        window.addEventListener("pageshow", (event) => {
+          if (event.persisted) resumeFromBackground();
+        });
+
+        // Network change: WiFi ↔ datos moviles, or AP reconnect. The browser
+        // doesn't always close the WS when the underlying transport flips.
+        window.addEventListener("online", () => {
+          if (sessionGone) return;
+          forceReconnect("Red recuperada, reconectando...");
+        });
+        window.addEventListener("offline", () => {
+          setStatus("offline", "Sin red. Esperando...");
+        });
+        // Focus is a coarse last-resort signal; harmless if duplicate.
+        window.addEventListener("focus", () => {
+          if (!socket || socket.readyState !== WebSocket.OPEN) {
+            resumeFromBackground();
           }
         });
 

@@ -269,7 +269,7 @@ function createPacedSubtitle(el: HTMLElement | null) {
   const FAST_BACKLOG = 12; // start taking 2 words/tick once this far behind
   const SKIP_BACKLOG = 28; // collapse harder past this many backlog words
   const SKIP_KEEP_TAIL = 12; // how much of the backlog to leave after a skip
-  const MAX_DISPLAYED_WORDS = 80; // hard cap so memory + DOM don't grow forever
+  const MAX_DISPLAYED_WORDS = 240; // hard cap so memory + DOM don't grow forever; clipping is handled by CSS overflow
 
   let target = "";
   let displayed = "";
@@ -567,20 +567,63 @@ function loadTranscript(): TranscriptLine[] {
   }
 }
 
+// Longest suffix of `a` that equals a prefix of `b`. Mirrors the pacer's
+// findOverlap: the phone sends a sliding window of the last ~18 words, so
+// consecutive finals heavily overlap with the previous saved line.
+function findWordOverlap(a: string[], b: string[]): number {
+  const max = Math.min(a.length, b.length);
+  for (let n = max; n > 0; n--) {
+    let ok = true;
+    for (let i = 0; i < n; i++) {
+      if (a[a.length - n + i] !== b[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return n;
+  }
+  return 0;
+}
+
+const TRANSCRIPT_MERGE_GAP_MS = 4000;
+
 function maybeSaveTranscript(payload: CaptionPayload) {
   if (!payload.isFinal || !payload.text.trim()) return;
 
   const settings = loadSettings();
   if (!settings.saveTranscript) return;
 
-  const lines = loadTranscript();
-  const lastLine = lines[lines.length - 1];
   const text = payload.text.trim();
-  if (lastLine?.text === text) return;
+  const lines = loadTranscript();
+  const last = lines[lines.length - 1];
+  const now = Date.now();
+
+  if (last) {
+    const lastWords = last.text.split(/\s+/).filter(Boolean);
+    const newWords = text.split(/\s+/).filter(Boolean);
+    const overlap = findWordOverlap(lastWords, newWords);
+
+    // El final nuevo está contenido al final del anterior: nada que sumar.
+    if (overlap === newWords.length) return;
+
+    const lastTime = new Date(last.time).getTime();
+    const withinGap = Number.isFinite(lastTime) && now - lastTime < TRANSCRIPT_MERGE_GAP_MS;
+
+    // Si hay overlap o la pausa fue corta, extendemos la línea existente con
+    // sólo el sufijo nuevo en vez de empujar una entrada nueva con repetición.
+    if (overlap > 0 || withinGap) {
+      const tail = newWords.slice(overlap).join(" ").trim();
+      if (!tail) return;
+      last.text = `${last.text} ${tail}`.replace(/\s+/g, " ").trim();
+      localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(lines.slice(-500)));
+      renderTranscriptLog();
+      return;
+    }
+  }
 
   lines.push({
     text,
-    time: new Date().toISOString(),
+    time: new Date(now).toISOString(),
   });
 
   localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(lines.slice(-500)));
