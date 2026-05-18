@@ -16,6 +16,8 @@ cd server; go run .                    # run relay locally on :8080 (override wi
 cd server; go vet ./...                # static analysis
 
 railway up --service aiep-relay        # manual relay deploy (auto-deploy on push to main is also wired)
+
+git tag app-v0.X.Y; git push origin app-v0.X.Y   # trigger Windows installer release (draft) via GitHub Actions
 ```
 
 No test runner is configured for the Tauri side. `npm run build` is the only frontend typecheck — no separate lint script.
@@ -70,6 +72,7 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 ### CI/CD
 
 - **`.github/workflows/relay-ci.yml`** runs `go vet`, `go test -race`, `go build` on PRs and pushes touching `server/**`.
+- **`.github/workflows/release.yml`** builds the NSIS Windows installer on `windows-latest`. Triggers: PRs touching `src/**`, `src-tauri/**`, `package*.json`, `vite.config.*`, `tsconfig*.json` (build → `.exe` uploaded as a downloadable run artifact, no release) and `push` of tag `app-v*` (build → GitHub Release draft with the `.exe` attached). Version is driven by the tag: a PowerShell step rewrites `version` in `src-tauri/tauri.conf.json` and `package.json` inside the runner before `tauri-action@v0` runs, so the repo files stay untouched. NSIS uses `webviewInstallMode: embedBootstrapper` — installer adds ~1.8 MB and downloads WebView2 at install time if missing. No code signing — SmartScreen warning is expected and documented in the release body.
 - **Railway auto-deploy**: dashboard → service `aiep-relay` → Settings → Source connected to repo, Root Directory `server/`. Each push to `main` rebuilds the Dockerfile and redeploys.
 
 ## Event/command contract

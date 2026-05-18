@@ -6,6 +6,16 @@ El audio del celular viaja al PC a traves de un relay WebSocket publico en Railw
 
 Repositorio con dos componentes: **app de escritorio Tauri** (frontend + Rust) y **relay Go** desplegado en Railway.
 
+## Descarga (instalador Windows)
+
+La forma recomendada de usar la app es bajar el instalador desde la pagina de [Releases](https://github.com/Dieg0Code/aiep-subtitulos/releases/latest). Doble click al `.exe`, siguiente-siguiente-listo.
+
+**Primera vez**: Windows SmartScreen va a advertir "Windows protegio tu PC" porque el instalador no esta firmado (firmar cuesta dinero y este proyecto no tiene presupuesto). Haz click en **Mas informacion** -> **Ejecutar de todas formas**. Solo aparece la primera vez.
+
+**Requisitos**: Windows 10/11 64-bit. WebView2 viene incluido en Windows 11 y en Windows 10 desde el April 2018 Update; si falta, el instalador lo descarga. Necesitas internet para el relay.
+
+El resto de este README es para desarrolladores. Si solo quieres usar la app, con el instalador es suficiente.
+
 ## Que hace
 
 - Abre la app de escritorio en el PC.
@@ -204,6 +214,22 @@ Si necesitas un modelo 100% offline, queda en el roadmap: integracion de Whisper
 - Opcion de proveedor cloud configurable (OpenAI / Deepgram) como alternativa a Whisper local.
 - Guardar preferencias locales de posicion, tamano y opacidad del overlay.
 - Empaquetado instalable para docentes no tecnicos.
+
+## Cortar una release
+
+1. Asegurate que `main` compila (los PRs en GitHub Actions ya lo validan: el workflow `release` genera el `.exe` como artifact en cada PR).
+2. Decide la version siguiendo semver: `0.2.0`, `0.2.1`, etc.
+3. Crea y empuja el tag:
+
+   ```powershell
+   git tag app-v0.2.0
+   git push origin app-v0.2.0
+   ```
+
+4. El workflow `release` corre en GitHub Actions, compila el instalador NSIS y crea un **Release como draft** en GitHub con el `.exe` adjunto.
+5. Revisa el draft, edita el changelog si quieres, y publica. Quedara accesible en `/releases/latest`.
+
+La version del tag (sin el prefijo `app-v`) se patcha en `tauri.conf.json` + `package.json` dentro del runner, asi que no hace falta bumpear manualmente esos archivos. La fuente de verdad es el tag.
 
 ## Licencia
 
