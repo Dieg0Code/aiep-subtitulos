@@ -13,8 +13,11 @@ use local_ip_address::local_ip;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, SanType};
 use serde::{Deserialize, Serialize};
 use std::{
+    io::{BufRead, BufReader, Read},
     net::{IpAddr, SocketAddr},
+    process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
+    thread,
 };
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl,
@@ -28,6 +31,9 @@ struct WebState {
 
 #[derive(Clone)]
 struct MobileUrl(Arc<Mutex<String>>);
+
+#[derive(Clone)]
+struct TunnelProcess(Arc<Mutex<Option<Child>>>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +53,68 @@ struct PhoneMessage {
 #[tauri::command]
 fn mobile_url(state: tauri::State<'_, MobileUrl>) -> String {
     state.0.lock().map(|url| url.clone()).unwrap_or_default()
+}
+
+#[tauri::command]
+fn check_cloudflared() -> Result<String, String> {
+    let output = Command::new("cloudflared")
+        .arg("--version")
+        .output()
+        .map_err(|_| "cloudflared no esta instalado o no esta en PATH".to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[tauri::command]
+fn start_public_tunnel(
+    app: AppHandle,
+    mobile_url: tauri::State<'_, MobileUrl>,
+    tunnel: tauri::State<'_, TunnelProcess>,
+) -> Result<&'static str, String> {
+    stop_tunnel_process(&tunnel)?;
+
+    let mut child = Command::new("cloudflared")
+        .args(["tunnel", "--url", "http://127.0.0.1:8788"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| {
+            "No pude iniciar cloudflared. Instala Cloudflare Tunnel CLI y revisa que este en PATH."
+                .to_string()
+        })?;
+
+    if let Some(stdout) = child.stdout.take() {
+        read_tunnel_output(stdout, app.clone(), mobile_url.0.clone());
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        read_tunnel_output(stderr, app.clone(), mobile_url.0.clone());
+    }
+
+    *tunnel
+        .0
+        .lock()
+        .map_err(|_| "No pude guardar el proceso del tunel".to_string())? = Some(child);
+
+    let _ = app.emit("tunnel-status", "Iniciando tunnel publico...");
+    Ok("Iniciando tunnel publico...")
+}
+
+#[tauri::command]
+fn stop_public_tunnel(
+    app: AppHandle,
+    mobile_url: tauri::State<'_, MobileUrl>,
+    tunnel: tauri::State<'_, TunnelProcess>,
+) -> Result<String, String> {
+    stop_tunnel_process(&tunnel)?;
+    let local_url = local_mobile_url();
+    set_mobile_url(&mobile_url.0, &app, local_url.clone());
+    let _ = app.emit("tunnel-status", "Modo local activo");
+    Ok(format!("Modo local activo: {local_url}"))
 }
 
 #[tauri::command]
@@ -87,6 +155,7 @@ pub fn run() {
             let url = start_mobile_server(app.handle().clone())
                 .unwrap_or_else(|error| format!("No se pudo iniciar servidor: {error}"));
             app.manage(MobileUrl(Arc::new(Mutex::new(url))));
+            app.manage(TunnelProcess(Arc::new(Mutex::new(None))));
             position_overlay(app.handle());
             Ok(())
         })
@@ -102,7 +171,10 @@ pub fn run() {
             close_overlay,
             show_overlay,
             hide_overlay,
-            reset_overlay_position
+            reset_overlay_position,
+            check_cloudflared,
+            start_public_tunnel,
+            stop_public_tunnel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -110,23 +182,88 @@ pub fn run() {
 
 fn start_mobile_server(app: AppHandle) -> Result<String, String> {
     let ip = local_ip().unwrap_or(IpAddr::from([127, 0, 0, 1]));
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8787));
+    let https_addr = SocketAddr::from(([0, 0, 0, 0], 8787));
+    let http_addr = SocketAddr::from(([127, 0, 0, 1], 8788));
     let cert = tauri::async_runtime::block_on(tls_config_for(ip))?;
     let router = Router::new()
         .route("/", get(mobile_page))
         .route("/ws", get(ws_handler))
         .with_state(WebState { app });
 
+    let https_router = router.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = axum_server::bind_rustls(addr, cert)
-            .serve(router.into_make_service())
+        if let Err(error) = axum_server::bind_rustls(https_addr, cert)
+            .serve(https_router.into_make_service())
             .await
         {
-            eprintln!("mobile server failed: {error}");
+            eprintln!("mobile https server failed: {error}");
+        }
+    });
+
+    tauri::async_runtime::spawn(async move {
+        match tokio::net::TcpListener::bind(http_addr).await {
+            Ok(listener) => {
+                if let Err(error) = axum::serve(listener, router).await {
+                    eprintln!("mobile http server failed: {error}");
+                }
+            }
+            Err(error) => eprintln!("mobile http bind failed: {error}"),
         }
     });
 
     Ok(format!("https://{ip}:8787"))
+}
+
+fn local_mobile_url() -> String {
+    let ip = local_ip().unwrap_or(IpAddr::from([127, 0, 0, 1]));
+    format!("https://{ip}:8787")
+}
+
+fn set_mobile_url(url_state: &Arc<Mutex<String>>, app: &AppHandle, url: String) {
+    if let Ok(mut current_url) = url_state.lock() {
+        *current_url = url.clone();
+    }
+    let _ = app.emit("mobile-url-update", url);
+}
+
+fn stop_tunnel_process(tunnel: &TunnelProcess) -> Result<(), String> {
+    if let Some(mut child) = tunnel
+        .0
+        .lock()
+        .map_err(|_| "No pude acceder al proceso del tunel".to_string())?
+        .take()
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    Ok(())
+}
+
+fn read_tunnel_output<R>(reader: R, app: AppHandle, url_state: Arc<Mutex<String>>)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        for line in BufReader::new(reader).lines().map_while(Result::ok) {
+            if let Some(url) = extract_trycloudflare_url(&line) {
+                set_mobile_url(&url_state, &app, url.clone());
+                let _ = app.emit("tunnel-status", format!("Tunnel publico activo: {url}"));
+            } else if line.contains("ERR") || line.contains("error") {
+                let _ = app.emit("tunnel-status", line);
+            }
+        }
+    });
+}
+
+fn extract_trycloudflare_url(line: &str) -> Option<String> {
+    line.split_whitespace()
+        .find(|part| part.starts_with("https://") && part.contains(".trycloudflare.com"))
+        .map(|url| {
+            url.trim_matches(|character: char| {
+                matches!(character, ',' | '.' | ')' | '(' | '"' | '\'' | '`')
+            })
+            .to_string()
+        })
 }
 
 fn position_overlay(app: &AppHandle) {
