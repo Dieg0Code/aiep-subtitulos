@@ -1,6 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  Captions,
+  CheckCircle2,
+  Cloud,
+  Download,
+  Eye,
+  EyeOff,
+  FileText,
+  MoveDown,
+  QrCode,
+  Radio,
+  RotateCcw,
+  Settings,
+  ShieldCheck,
+  Smartphone,
+  Trash2,
+  Wifi,
+  createIcons,
+} from "lucide";
 import QRCode from "qrcode";
 
 type CaptionPayload = {
@@ -34,38 +53,65 @@ async function renderControl(root: HTMLDivElement) {
   document.body.classList.remove("overlay-mode");
   root.innerHTML = `
     <section class="control-shell">
-      <div class="brand-panel">
-        <p class="eyebrow">AIEP inclusivo</p>
-        <h1>Subtitulos flotantes para clases presenciales</h1>
-        <p class="intro">
-          Escanea el QR con el celular docente. La voz se convierte en texto y aparece en una ventana flotante sobre PowerPoint, navegador o cualquier app.
-        </p>
-        <div class="status-row">
-          <span class="status-dot" id="status-dot"></span>
-          <span id="phone-status">Esperando celular</span>
+      <header class="app-header">
+        <div class="brand-mark">
+          <span class="brand-symbol">A</span>
+          <div>
+            <p class="eyebrow">AIEP inclusivo</p>
+            <h1>Subtitulos flotantes</h1>
+          </div>
         </div>
-      </div>
+        <div class="header-status">
+          <div class="status-row">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="phone-status">Esperando celular</span>
+          </div>
+          <div class="privacy-chip"><i data-lucide="shield-check"></i> Sin guardar audio</div>
+        </div>
+      </header>
 
-      <section class="qr-panel" aria-label="Conexion del celular">
-        <p class="section-label">Conexion del celular</p>
+      <section class="hero-panel">
+        <div>
+          <p class="eyebrow">Aula accesible en tiempo real</p>
+          <h2>Conecta el celular y proyecta subtitulos sobre cualquier clase.</h2>
+          <p class="intro">
+            Una interfaz simple para docentes: QR, microfono movil, overlay flotante y registro de la clase en un mismo lugar.
+          </p>
+        </div>
+        <div class="hero-metrics">
+          <span><strong>&lt; 5s</strong> latencia MVP</span>
+          <span><strong>LAN / Cloudflare</strong> conexion</span>
+          <span><strong>Local</strong> registro</span>
+        </div>
+      </section>
+
+      <section class="qr-panel app-card" aria-label="Conexion del celular">
+        <div class="section-title">
+          <i data-lucide="qr-code"></i>
+          <div>
+            <p class="section-label">Conexion del celular</p>
+            <h3>Escanea y habla</h3>
+          </div>
+        </div>
         <div class="qr-frame">
           <canvas id="qr-code" width="256" height="256"></canvas>
         </div>
         <p class="qr-url" id="mobile-url">Preparando enlace local...</p>
         <div class="connection-actions">
-          <button id="start-cloudflare" type="button">Activar enlace publico</button>
-          <button id="stop-cloudflare" type="button">Usar red local</button>
+          <button id="start-cloudflare" type="button"><i data-lucide="cloud"></i> Enlace publico</button>
+          <button id="stop-cloudflare" type="button"><i data-lucide="wifi"></i> Red local</button>
         </div>
         <p class="connection-status" id="connection-status">Cloudflare Tunnel es el modo recomendado si el celular no esta en la misma red.</p>
-        <div class="steps">
-          <span>1. Escanear</span>
-          <span>2. Aceptar microfono</span>
-          <span>3. Iniciar microfono</span>
-        </div>
       </section>
 
-      <section class="settings-panel">
-        <p class="section-label">Opciones</p>
+      <section class="settings-panel app-card">
+        <div class="section-title">
+          <i data-lucide="settings"></i>
+          <div>
+            <p class="section-label">Opciones</p>
+            <h3>Modo de trabajo</h3>
+          </div>
+        </div>
         <label class="field">
           Modo de conexion
           <select id="connection-mode">
@@ -87,31 +133,63 @@ async function renderControl(root: HTMLDivElement) {
         </label>
       </section>
 
-      <section class="caption-preview">
+      <section class="caption-preview app-card">
         <div class="section-header">
-          <p class="section-label">Vista previa</p>
+          <div class="section-title">
+            <i data-lucide="captions"></i>
+            <div>
+              <p class="section-label">Vista previa</p>
+              <h3>Subtitulo actual</h3>
+            </div>
+          </div>
           <div class="overlay-actions" aria-label="Controles del overlay">
-            <button id="show-overlay" type="button">Mostrar overlay</button>
-            <button id="hide-overlay" type="button">Ocultar</button>
-            <button id="reset-overlay" type="button">Enviar abajo</button>
+            <button id="show-overlay" type="button"><i data-lucide="eye"></i> Mostrar</button>
+            <button id="hide-overlay" type="button"><i data-lucide="eye-off"></i> Ocultar</button>
+            <button id="reset-overlay" type="button"><i data-lucide="move-down"></i> Enviar abajo</button>
           </div>
         </div>
         <p class="overlay-command-status" id="overlay-command-status">Overlay listo.</p>
         <div class="preview-subtitle" id="preview-text">Los subtitulos apareceran aqui.</div>
       </section>
 
-      <section class="transcript-panel">
+      <section class="transcript-panel app-card">
         <div class="section-header">
-          <p class="section-label">Registro de la clase</p>
+          <div class="section-title">
+            <i data-lucide="file-text"></i>
+            <div>
+              <p class="section-label">Registro de la clase</p>
+              <h3>Bitacora local</h3>
+            </div>
+          </div>
           <div class="overlay-actions">
-            <button id="download-transcript" type="button">Descargar TXT</button>
-            <button id="clear-transcript" type="button">Limpiar</button>
+            <button id="download-transcript" type="button"><i data-lucide="download"></i> Descargar</button>
+            <button id="clear-transcript" type="button"><i data-lucide="trash-2"></i> Limpiar</button>
           </div>
         </div>
         <div class="transcript-log" id="transcript-log"></div>
       </section>
     </section>
   `;
+  createIcons({
+    icons: {
+      Captions,
+      CheckCircle2,
+      Cloud,
+      Download,
+      Eye,
+      EyeOff,
+      FileText,
+      MoveDown,
+      QrCode,
+      Radio,
+      RotateCcw,
+      Settings,
+      ShieldCheck,
+      Smartphone,
+      Trash2,
+      Wifi,
+    },
+  });
 
   const mobileUrl = await invoke<string>("mobile_url");
   await updateMobileUrl(mobileUrl);
