@@ -1,0 +1,35 @@
+name: relay-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/relay-ci.yml'
+  pull_request:
+    paths:
+      - 'server/**'
+      - '.github/workflows/relay-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: server/go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test (race)
+        run: go test -race -count=1 ./...
+
+      - name: go build
+        run: go build -trimpath -ldflags="-s -w" -o /tmp/relay .

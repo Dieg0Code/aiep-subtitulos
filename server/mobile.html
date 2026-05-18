@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#003b70" />
+    <title>Microfono AIEP</title>
+    <style>
+      :root {
+        --aiep-blue: #003b70;
+        --aiep-blue-2: #00528f;
+        --aiep-red: #d71920;
+        --ink: #12212f;
+        --muted: #647385;
+        --line: rgba(0, 59, 112, 0.14);
+        --panel: rgba(255, 255, 255, 0.96);
+        color: var(--ink);
+        font-family: Aptos, "Segoe UI", system-ui, sans-serif;
+        font-size: 16px;
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding:
+          calc(env(safe-area-inset-top) + 8px)
+          env(safe-area-inset-right)
+          calc(env(safe-area-inset-bottom) + 16px)
+          env(safe-area-inset-left);
+        background:
+          linear-gradient(90deg, rgba(0, 54, 99, 0.06) 1px, transparent 1px),
+          linear-gradient(0deg, rgba(0, 54, 99, 0.05) 1px, transparent 1px),
+          #f5f8fb;
+        background-size: 36px 36px;
+      }
+      main {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 14px 18px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      header.brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand-symbol {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--aiep-blue), var(--aiep-blue-2));
+        color: #ffffff;
+        font-size: 1.3rem;
+        font-weight: 950;
+      }
+      .brand h1 {
+        margin: 0;
+        color: var(--aiep-blue);
+        font-size: 1.35rem;
+        line-height: 1;
+      }
+      .brand p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        align-self: flex-start;
+        gap: 8px;
+        padding: 7px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #ffffff;
+        color: var(--aiep-blue);
+        font-size: 0.82rem;
+        font-weight: 850;
+      }
+      .status-pill .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: #b8c1ca;
+      }
+      .status-pill.online .dot {
+        background: #12a66a;
+        box-shadow: 0 0 0 5px rgba(18, 166, 106, 0.18);
+      }
+      .status-pill.offline .dot { background: var(--aiep-red); }
+      .status-pill.reconnecting .dot {
+        background: #f0a500;
+        animation: dot-pulse 1.2s ease-in-out infinite;
+      }
+      @keyframes dot-pulse {
+        0%, 100% { opacity: 0.55; }
+        50% { opacity: 1; }
+      }
+      .panel {
+        padding: 14px 16px 16px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        box-shadow: 0 12px 32px rgba(0, 35, 70, 0.06);
+      }
+      .panel .label {
+        margin: 0 0 8px;
+        color: var(--aiep-red);
+        font-size: 0.68rem;
+        font-weight: 950;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .panel.error { border-color: rgba(215, 25, 32, 0.4); }
+      .panel.error .label { color: var(--aiep-red); }
+      .transcript {
+        min-height: 132px;
+        color: var(--ink);
+        font-size: 1.2rem;
+        line-height: 1.35;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+      }
+      .transcript.idle {
+        color: var(--muted);
+        font-weight: 800;
+      }
+      #toggle {
+        width: 100%;
+        min-height: 74px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--aiep-red);
+        color: #ffffff;
+        font-size: 1.15rem;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        box-shadow: 0 14px 28px rgba(215, 25, 32, 0.28);
+        transition: background 160ms ease, transform 120ms ease, box-shadow 160ms ease;
+      }
+      #toggle:active { transform: translateY(1px); }
+      #toggle.listening {
+        background: #12262f;
+        box-shadow: 0 14px 28px rgba(18, 38, 47, 0.32);
+      }
+      #toggle:disabled {
+        background: #98a4b1;
+        box-shadow: none;
+        cursor: not-allowed;
+      }
+      .mic-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: #ffffff;
+      }
+      #toggle.listening .mic-dot { animation: mic-pulse 1.2s ease-in-out infinite; }
+      @keyframes mic-pulse {
+        0%, 100% { transform: scale(0.85); opacity: 0.55; }
+        50% { transform: scale(1.25); opacity: 1; }
+      }
+      details {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #ffffff;
+        overflow: hidden;
+      }
+      details > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 14px 16px;
+        color: var(--aiep-blue);
+        font-size: 0.92rem;
+        font-weight: 900;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      details > summary::-webkit-details-marker { display: none; }
+      details > summary::after {
+        content: "+";
+        font-size: 1.3rem;
+        color: var(--muted);
+      }
+      details[open] > summary::after { content: "-"; }
+      details textarea {
+        display: block;
+        width: 100%;
+        min-height: 96px;
+        padding: 12px 16px 16px;
+        border: 0;
+        border-top: 1px solid var(--line);
+        background: transparent;
+        font: inherit;
+        resize: vertical;
+      }
+      .hint {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 750;
+        line-height: 1.4;
+      }
+      .session-tag {
+        margin-left: auto;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(0, 59, 112, 0.08);
+        color: var(--aiep-blue);
+        font-size: 0.78rem;
+        font-weight: 900;
+        letter-spacing: 0.06em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="brand">
+        <div class="brand-symbol">A</div>
+        <div>
+          <h1>Microfono docente</h1>
+          <p>Subtitulos en tiempo real</p>
+        </div>
+        <span id="session-tag" class="session-tag" hidden></span>
+      </header>
+
+      <div id="status" class="status-pill reconnecting">
+        <span class="dot"></span>
+        <span id="status-text">Conectando con el relay...</span>
+      </div>
+
+      <section class="panel">
+        <p class="label">Estado</p>
+        <div id="transcript" class="transcript idle">Esperando voz...</div>
+      </section>
+
+      <button id="toggle" type="button">
+        <span class="mic-dot"></span>
+        <span id="toggle-label">Iniciar captura</span>
+      </button>
+
+      <details>
+        <summary>Modo respaldo escrito</summary>
+        <textarea id="manual" placeholder="Si el microfono no funciona, escribe aqui y el texto ira al PC."></textarea>
+      </details>
+
+      <p class="hint">El audio se envia al PC del docente a traves de un relay en la nube. Puedes bloquear la pantalla durante la clase: el navegador intenta mantener la captura activa, pero en algunos celulares Android puede detenerse tras unos minutos.</p>
+    </main>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const sessionId = params.get("s");
+
+      const button = document.querySelector("#toggle");
+      const toggleLabel = document.querySelector("#toggle-label");
+      const transcript = document.querySelector("#transcript");
+      const statusEl = document.querySelector("#status");
+      const statusText = document.querySelector("#status-text");
+      const manual = document.querySelector("#manual");
+      const sessionTag = document.querySelector("#session-tag");
+
+      const setStatus = (state, text) => {
+        statusEl.className = `status-pill ${state}`;
+        statusText.textContent = text;
+      };
+      const setTranscript = (text, idle) => {
+        transcript.textContent = text;
+        transcript.classList.toggle("idle", !!idle);
+      };
+
+      if (!sessionId) {
+        button.disabled = true;
+        toggleLabel.textContent = "Sin sesion";
+        setStatus("offline", "Escanea el QR del PC docente para abrir esta pagina.");
+      } else {
+        sessionTag.textContent = sessionId;
+        sessionTag.hidden = false;
+        bootstrap(sessionId);
+      }
+
+      function bootstrap(sessionId) {
+        let socket = null;
+        let listening = false;
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let silentCtx = null;
+        let silentSource = null;
+        let chunksSent = 0;
+        let wakeLock = null;
+        let reconnectTimer = null;
+        let reconnectDelay = 1000;
+        let sessionGone = false;
+
+        const send = (payload) => {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(payload));
+          }
+        };
+
+        const scheduleReconnect = () => {
+          if (sessionGone) return;
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(() => {
+            reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+            connectSocket();
+          }, reconnectDelay);
+        };
+
+        const connectSocket = () => {
+          if (sessionGone) return;
+          if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+            return;
+          }
+          setStatus("reconnecting", "Conectando con el relay...");
+          const proto = location.protocol === "https:" ? "wss:" : "ws:";
+          try {
+            socket = new WebSocket(`${proto}//${location.host}/ws/guest?s=${encodeURIComponent(sessionId)}`);
+          } catch (error) {
+            scheduleReconnect();
+            return;
+          }
+          socket.addEventListener("open", () => {
+            reconnectDelay = 1000;
+            setStatus("online", "Conectado al PC");
+            send({ kind: "status", text: "connected" });
+          });
+          socket.addEventListener("close", (event) => {
+            if (event.code === 4404 || event.code === 1008) {
+              sessionGone = true;
+              setStatus("offline", "Sesion no encontrada. Pidele al docente que reabra el QR.");
+              button.disabled = true;
+              return;
+            }
+            setStatus("offline", "Se perdio la conexion. Reintentando...");
+            scheduleReconnect();
+          });
+          socket.addEventListener("error", () => {
+            try { socket.close(); } catch (e) {}
+          });
+        };
+
+        const requestWakeLock = async () => {
+          if (!("wakeLock" in navigator)) return;
+          try {
+            wakeLock = await navigator.wakeLock.request("screen");
+            wakeLock.addEventListener("release", () => { wakeLock = null; });
+          } catch (error) {}
+        };
+
+        const releaseWakeLock = async () => {
+          try { await wakeLock?.release(); } catch (error) {}
+          wakeLock = null;
+        };
+
+        const pickRecorderMime = () => {
+          const candidates = [
+            "audio/webm;codecs=opus",
+            "audio/webm",
+            "audio/ogg;codecs=opus",
+            "audio/mp4",
+          ];
+          for (const candidate of candidates) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(candidate)) {
+              return candidate;
+            }
+          }
+          return "";
+        };
+
+        const startSilentLoop = async () => {
+          try {
+            if (!silentCtx) {
+              const AudioCtor = window.AudioContext || window.webkitAudioContext;
+              silentCtx = new AudioCtor();
+              const buffer = silentCtx.createBuffer(1, silentCtx.sampleRate, silentCtx.sampleRate);
+              silentSource = silentCtx.createBufferSource();
+              silentSource.buffer = buffer;
+              silentSource.loop = true;
+              const gain = silentCtx.createGain();
+              gain.gain.value = 0.0001;
+              silentSource.connect(gain).connect(silentCtx.destination);
+              silentSource.start();
+            }
+            if (silentCtx.state === "suspended") {
+              await silentCtx.resume();
+            }
+          } catch (error) {}
+        };
+
+        const stopSilentLoop = async () => {
+          try { silentSource?.stop(); } catch (error) {}
+          try { await silentCtx?.close(); } catch (error) {}
+          silentSource = null;
+          silentCtx = null;
+        };
+
+        const startCapture = async () => {
+          if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
+            setStatus("offline", "Este navegador no soporta captura de audio. Usa Chrome en Android.");
+            return false;
+          }
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+              },
+            });
+          } catch (error) {
+            setStatus("offline", "Permiso de microfono denegado.");
+            return false;
+          }
+          const mime = pickRecorderMime();
+          try {
+            mediaRecorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream);
+          } catch (error) {
+            setStatus("offline", `No se pudo iniciar grabador: ${error?.message || error}`);
+            return false;
+          }
+          mediaRecorder.addEventListener("dataavailable", async (event) => {
+            if (!event.data || event.data.size === 0) return;
+            if (!socket || socket.readyState !== WebSocket.OPEN) return;
+            try {
+              const buffer = await event.data.arrayBuffer();
+              socket.send(buffer);
+              chunksSent += 1;
+              send({ kind: "status", text: `chunks:${chunksSent}` });
+            } catch (error) {}
+          });
+          mediaRecorder.addEventListener("error", (event) => {
+            setStatus("offline", `Error de grabacion: ${event?.error?.message || "desconocido"}`);
+          });
+          try {
+            mediaRecorder.start(1500);
+          } catch (error) {
+            setStatus("offline", `No se pudo iniciar la grabacion: ${error?.message || error}`);
+            return false;
+          }
+          await startSilentLoop();
+          return true;
+        };
+
+        const stopCapture = async () => {
+          try { mediaRecorder && mediaRecorder.state !== "inactive" && mediaRecorder.stop(); } catch (error) {}
+          try { mediaStream?.getTracks().forEach((track) => track.stop()); } catch (error) {}
+          mediaRecorder = null;
+          mediaStream = null;
+          await stopSilentLoop();
+        };
+
+        document.addEventListener("visibilitychange", async () => {
+          if (document.visibilityState !== "visible") return;
+          if (!socket || socket.readyState !== WebSocket.OPEN) {
+            clearTimeout(reconnectTimer);
+            reconnectDelay = 1000;
+            connectSocket();
+          }
+          if (listening) {
+            if (!wakeLock) await requestWakeLock();
+            if (silentCtx?.state === "suspended") {
+              try { await silentCtx.resume(); } catch (error) {}
+            }
+            if (mediaRecorder && mediaRecorder.state === "inactive") {
+              try { await startCapture(); } catch (error) {}
+            }
+          }
+        });
+
+        manual.addEventListener("input", () => {
+          const text = manual.value.trim();
+          setTranscript(text || "Esperando voz...", !text);
+          send({ kind: "caption", text, isFinal: false });
+        });
+
+        button.addEventListener("click", async () => {
+          if (!listening) {
+            listening = true;
+            chunksSent = 0;
+            setTranscript("Enviando audio al PC...", false);
+            button.classList.add("listening");
+            toggleLabel.textContent = "Detener captura";
+            await requestWakeLock();
+            const ok = await startCapture();
+            if (!ok) {
+              listening = false;
+              button.classList.remove("listening");
+              toggleLabel.textContent = "Reintentar captura";
+              await releaseWakeLock();
+              setTranscript("Esperando voz...", true);
+            }
+          } else {
+            listening = false;
+            button.classList.remove("listening");
+            toggleLabel.textContent = "Iniciar captura";
+            await stopCapture();
+            await releaseWakeLock();
+            setTranscript("Captura detenida.", true);
+          }
+        });
+
+        connectSocket();
+      }
+    </script>
+  </body>
+</html>

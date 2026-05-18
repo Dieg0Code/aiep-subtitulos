@@ -3,21 +3,15 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Captions,
-  CheckCircle2,
-  Cloud,
   Download,
   Eye,
   EyeOff,
   FileText,
   MoveDown,
   QrCode,
-  Radio,
-  RotateCcw,
   Settings,
   ShieldCheck,
-  Smartphone,
   Trash2,
-  Wifi,
   createIcons,
 } from "lucide";
 import QRCode from "qrcode";
@@ -57,8 +51,8 @@ async function renderControl(root: HTMLDivElement) {
         <div class="brand-mark">
           <span class="brand-symbol">A</span>
           <div>
-            <p class="eyebrow">AIEP inclusivo</p>
             <h1>Subtitulos flotantes</h1>
+            <p class="app-subtitle">Aula accesible en tiempo real</p>
           </div>
         </div>
         <div class="header-status">
@@ -70,59 +64,58 @@ async function renderControl(root: HTMLDivElement) {
         </div>
       </header>
 
-      <section class="hero-panel">
-        <div>
-          <p class="eyebrow">Aula accesible en tiempo real</p>
-          <h2>Conecta el celular y proyecta subtitulos sobre cualquier clase.</h2>
-          <p class="intro">
-            Una interfaz simple para docentes: QR, microfono movil, overlay flotante y registro de la clase en un mismo lugar.
-          </p>
-        </div>
-        <div class="hero-metrics">
-          <span><strong>&lt; 5s</strong> latencia MVP</span>
-          <span><strong>LAN / Cloudflare</strong> conexion</span>
-          <span><strong>Local</strong> registro</span>
-        </div>
-      </section>
-
       <section class="qr-panel app-card" aria-label="Conexion del celular">
         <div class="section-title">
           <i data-lucide="qr-code"></i>
           <div>
-            <p class="section-label">Conexion del celular</p>
-            <h3>Escanea y habla</h3>
+            <p class="section-label">Celular</p>
+            <h2>Micrófono</h2>
           </div>
         </div>
-        <div class="qr-frame">
+        <div class="qr-frame" id="qr-frame">
           <canvas id="qr-code" width="256" height="256"></canvas>
+          <div class="qr-placeholder" id="qr-placeholder">
+            <i data-lucide="qr-code"></i>
+            <span>Preparando QR...</span>
+          </div>
         </div>
-        <p class="qr-url" id="mobile-url">Preparando enlace local...</p>
-        <div class="connection-actions">
-          <button id="start-cloudflare" type="button"><i data-lucide="cloud"></i> Enlace publico</button>
-          <button id="stop-cloudflare" type="button"><i data-lucide="wifi"></i> Red local</button>
-        </div>
-        <p class="connection-status" id="connection-status">Cloudflare Tunnel es el modo recomendado si el celular no esta en la misma red.</p>
+        <p class="qr-url" id="mobile-url">Preparando enlace...</p>
+        <p class="qr-status" id="qr-status">Conectando al relay...</p>
       </section>
 
+      <section class="caption-preview app-card">
+        <div class="section-header">
+          <div class="section-title">
+            <i data-lucide="captions"></i>
+            <div>
+              <p class="section-label">En vivo</p>
+              <h2>Subtítulo actual</h2>
+            </div>
+          </div>
+          <div class="overlay-actions" aria-label="Controles del overlay">
+            <button id="show-overlay" type="button"><i data-lucide="eye"></i> Mostrar</button>
+            <button id="hide-overlay" class="btn-ghost" type="button"><i data-lucide="eye-off"></i> Ocultar</button>
+            <button id="reset-overlay" class="btn-ghost" type="button"><i data-lucide="move-down"></i> Abajo</button>
+          </div>
+        </div>
+        <div class="preview-subtitle" id="preview-text">Esperando subtitulos...</div>
+        <p class="audio-stats" id="audio-stats">Esperando audio del celular...</p>
+        <p class="overlay-command-status" id="overlay-command-status">Overlay listo.</p>
+      </section>
+
+      <aside class="side-stack">
       <section class="settings-panel app-card">
         <div class="section-title">
           <i data-lucide="settings"></i>
           <div>
             <p class="section-label">Opciones</p>
-            <h3>Modo de trabajo</h3>
+            <h2>Configuración</h2>
           </div>
         </div>
         <label class="field">
-          Modo de conexion
-          <select id="connection-mode">
-            <option value="public">Enlace publico Cloudflare</option>
-            <option value="local">Red local</option>
-          </select>
-        </label>
-        <label class="field">
           Motor de transcripcion
           <select id="speech-engine">
-            <option value="web-speech">Web Speech del celular (MVP)</option>
+            <option value="relay-audio">Audio al PC via relay (MVP)</option>
             <option value="whisper-local" disabled>Whisper local (proximamente)</option>
             <option value="openai" disabled>OpenAI speech-to-text (proximamente)</option>
           </select>
@@ -133,61 +126,37 @@ async function renderControl(root: HTMLDivElement) {
         </label>
       </section>
 
-      <section class="caption-preview app-card">
-        <div class="section-header">
-          <div class="section-title">
-            <i data-lucide="captions"></i>
-            <div>
-              <p class="section-label">Vista previa</p>
-              <h3>Subtitulo actual</h3>
-            </div>
-          </div>
-          <div class="overlay-actions" aria-label="Controles del overlay">
-            <button id="show-overlay" type="button"><i data-lucide="eye"></i> Mostrar</button>
-            <button id="hide-overlay" type="button"><i data-lucide="eye-off"></i> Ocultar</button>
-            <button id="reset-overlay" type="button"><i data-lucide="move-down"></i> Enviar abajo</button>
-          </div>
-        </div>
-        <p class="overlay-command-status" id="overlay-command-status">Overlay listo.</p>
-        <div class="preview-subtitle" id="preview-text">Los subtitulos apareceran aqui.</div>
-      </section>
-
       <section class="transcript-panel app-card">
         <div class="section-header">
           <div class="section-title">
             <i data-lucide="file-text"></i>
             <div>
-              <p class="section-label">Registro de la clase</p>
-              <h3>Bitacora local</h3>
+              <p class="section-label">Registro</p>
+              <h2>Bitácora</h2>
             </div>
           </div>
           <div class="overlay-actions">
             <button id="download-transcript" type="button"><i data-lucide="download"></i> Descargar</button>
-            <button id="clear-transcript" type="button"><i data-lucide="trash-2"></i> Limpiar</button>
+            <button id="clear-transcript" class="btn-ghost" type="button"><i data-lucide="trash-2"></i> Limpiar</button>
           </div>
         </div>
         <div class="transcript-log" id="transcript-log"></div>
       </section>
+      </aside>
     </section>
   `;
   createIcons({
     icons: {
       Captions,
-      CheckCircle2,
-      Cloud,
       Download,
       Eye,
       EyeOff,
       FileText,
       MoveDown,
       QrCode,
-      Radio,
-      RotateCcw,
       Settings,
       ShieldCheck,
-      Smartphone,
       Trash2,
-      Wifi,
     },
   });
 
@@ -195,7 +164,6 @@ async function renderControl(root: HTMLDivElement) {
   await updateMobileUrl(mobileUrl);
   wireSettings(settings);
   renderTranscriptLog();
-  initializeConnection(settings);
 
   const runOverlayCommand = async (command: string) => {
     const status = document.querySelector<HTMLParagraphElement>("#overlay-command-status");
@@ -219,14 +187,6 @@ async function renderControl(root: HTMLDivElement) {
     runOverlayCommand("reset_overlay_position");
   });
 
-  document.querySelector<HTMLButtonElement>("#start-cloudflare")?.addEventListener("click", () => {
-    startCloudflareTunnel(true);
-  });
-
-  document.querySelector<HTMLButtonElement>("#stop-cloudflare")?.addEventListener("click", () => {
-    stopCloudflareTunnel(true);
-  });
-
   document.querySelector<HTMLButtonElement>("#clear-transcript")?.addEventListener("click", () => {
     localStorage.setItem(TRANSCRIPT_KEY, "[]");
     renderTranscriptLog();
@@ -236,6 +196,7 @@ async function renderControl(root: HTMLDivElement) {
     downloadTranscript();
   });
 
+  const audioStats = { totalBytes: 0, chunks: 0, lastUpdate: 0 };
   wireCaptionListeners({
     onCaption: (payload) => {
       const preview = document.querySelector<HTMLDivElement>("#preview-text");
@@ -244,8 +205,22 @@ async function renderControl(root: HTMLDivElement) {
     },
     onStatus: updatePhoneStatus,
     onMobileUrl: updateMobileUrl,
-    onTunnelStatus: updateConnectionStatus,
+    onRelayStatus: updateRelayStatus,
+    onAudioBytes: (bytes) => {
+      audioStats.totalBytes += bytes;
+      audioStats.chunks += 1;
+      audioStats.lastUpdate = Date.now();
+      renderAudioStats(audioStats);
+    },
   });
+}
+
+function renderAudioStats(stats: { totalBytes: number; chunks: number; lastUpdate: number }) {
+  const el = document.querySelector<HTMLParagraphElement>("#audio-stats");
+  if (!el) return;
+  const kb = (stats.totalBytes / 1024).toFixed(1);
+  const seconds = Math.round((Date.now() - stats.lastUpdate) / 1000);
+  el.textContent = `Audio recibido: ${kb} KB en ${stats.chunks} chunk(s) — ultimo hace ${seconds}s`;
 }
 
 function renderOverlay(root: HTMLDivElement) {
@@ -307,7 +282,8 @@ function wireCaptionListeners(handlers: {
   onCaption?: (payload: CaptionPayload) => void;
   onStatus?: (status: string) => void;
   onMobileUrl?: (url: string) => void;
-  onTunnelStatus?: (status: string) => void;
+  onRelayStatus?: (status: RelayStatus) => void;
+  onAudioBytes?: (bytes: number) => void;
 }) {
   listen<CaptionPayload>("caption-update", (event) => {
     handlers.onCaption?.(event.payload);
@@ -321,8 +297,12 @@ function wireCaptionListeners(handlers: {
     handlers.onMobileUrl?.(event.payload);
   });
 
-  listen<string>("tunnel-status", (event) => {
-    handlers.onTunnelStatus?.(event.payload);
+  listen<RelayStatus>("relay-status", (event) => {
+    handlers.onRelayStatus?.(event.payload);
+  });
+
+  listen<number>("audio-bytes", (event) => {
+    handlers.onAudioBytes?.(event.payload);
   });
 }
 
@@ -346,6 +326,8 @@ function updatePhoneStatus(status: string) {
 async function updateMobileUrl(url: string) {
   const urlEl = document.querySelector<HTMLParagraphElement>("#mobile-url");
   const qrCanvas = document.querySelector<HTMLCanvasElement>("#qr-code");
+  const qrFrame = document.querySelector<HTMLDivElement>("#qr-frame");
+  const statusEl = document.querySelector<HTMLParagraphElement>("#qr-status");
 
   if (urlEl) urlEl.textContent = url;
   if (qrCanvas && url.startsWith("https://")) {
@@ -357,19 +339,39 @@ async function updateMobileUrl(url: string) {
         light: "#fffaf0",
       },
     });
+    qrFrame?.classList.add("has-qr");
+    if (statusEl && statusEl.dataset.state !== "reconnecting") {
+      statusEl.textContent = "Listo. Escanea el QR con el celular.";
+      statusEl.dataset.state = "online";
+    }
+  } else {
+    qrFrame?.classList.remove("has-qr");
   }
 }
 
-function updateConnectionStatus(status: string) {
-  const statusEl = document.querySelector<HTMLParagraphElement>("#connection-status");
-  if (statusEl) statusEl.textContent = status;
+type RelayStatus = "connecting" | "online" | "reconnecting";
+
+function updateRelayStatus(status: RelayStatus) {
+  const el = document.querySelector<HTMLParagraphElement>("#qr-status");
+  if (!el) return;
+  const hasUrl = !!document
+    .querySelector<HTMLDivElement>("#qr-frame")
+    ?.classList.contains("has-qr");
+  el.textContent =
+    status === "online"
+      ? hasUrl
+        ? "Listo. Escanea el QR con el celular."
+        : "Conectado al relay. Esperando sesion..."
+      : status === "reconnecting"
+        ? "Sin conexion al relay. Reintentando..."
+        : "Conectando al relay...";
+  el.dataset.state = status;
 }
 
 function loadSettings() {
   const fallback = {
-    connectionMode: "public",
     saveTranscript: true,
-    speechEngine: "web-speech",
+    speechEngine: "relay-audio",
   };
 
   try {
@@ -384,23 +386,11 @@ function saveSettings(settings: ReturnType<typeof loadSettings>) {
 }
 
 function wireSettings(settings: ReturnType<typeof loadSettings>) {
-  const connectionMode = document.querySelector<HTMLSelectElement>("#connection-mode");
   const saveTranscript = document.querySelector<HTMLInputElement>("#save-transcript");
   const speechEngine = document.querySelector<HTMLSelectElement>("#speech-engine");
 
-  if (connectionMode) connectionMode.value = settings.connectionMode;
   if (saveTranscript) saveTranscript.checked = settings.saveTranscript;
   if (speechEngine) speechEngine.value = settings.speechEngine;
-
-  connectionMode?.addEventListener("change", () => {
-    settings.connectionMode = connectionMode.value;
-    saveSettings(settings);
-    if (connectionMode.value === "public") {
-      startCloudflareTunnel(false);
-    } else {
-      stopCloudflareTunnel(false);
-    }
-  });
 
   saveTranscript?.addEventListener("change", () => {
     settings.saveTranscript = saveTranscript.checked;
@@ -411,57 +401,6 @@ function wireSettings(settings: ReturnType<typeof loadSettings>) {
     settings.speechEngine = speechEngine.value;
     saveSettings(settings);
   });
-}
-
-async function initializeConnection(settings: ReturnType<typeof loadSettings>) {
-  if (settings.connectionMode === "public") {
-    await startCloudflareTunnel(false);
-  } else {
-    updateConnectionStatus("Modo local activo. El celular debe estar en la misma red.");
-  }
-}
-
-async function startCloudflareTunnel(persist: boolean) {
-  const mode = document.querySelector<HTMLSelectElement>("#connection-mode");
-  if (persist && mode) {
-    const settings = loadSettings();
-    settings.connectionMode = "public";
-    mode.value = "public";
-    saveSettings(settings);
-  }
-
-  updateConnectionStatus("Revisando cloudflared...");
-  try {
-    const version = await invoke<string>("check_cloudflared");
-    updateConnectionStatus(`cloudflared detectado (${version}). Iniciando enlace publico...`);
-    const message = await invoke<string>("start_public_tunnel");
-    updateConnectionStatus(message);
-  } catch (error) {
-    updateConnectionStatus(
-      `No se pudo activar Cloudflare Tunnel. Se mantiene modo local. Detalle: ${String(error)}`,
-    );
-    const settings = loadSettings();
-    settings.connectionMode = "local";
-    saveSettings(settings);
-    if (mode) mode.value = "local";
-  }
-}
-
-async function stopCloudflareTunnel(persist: boolean) {
-  const mode = document.querySelector<HTMLSelectElement>("#connection-mode");
-  if (persist && mode) {
-    const settings = loadSettings();
-    settings.connectionMode = "local";
-    mode.value = "local";
-    saveSettings(settings);
-  }
-
-  try {
-    const message = await invoke<string>("stop_public_tunnel");
-    updateConnectionStatus(message);
-  } catch (error) {
-    updateConnectionStatus(`No se pudo detener el tunnel: ${String(error)}`);
-  }
 }
 
 function loadTranscript(): TranscriptLine[] {

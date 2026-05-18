@@ -1,46 +1,44 @@
 # AIEP Subtitulos
 
-App de escritorio inclusiva para docentes: muestra subtitulos flotantes sobre cualquier presentacion, navegador o aplicacion. El celular funciona como microfono y el PC muestra el texto como overlay.
+App de escritorio inclusiva para docentes: muestra subtitulos flotantes sobre cualquier presentacion, navegador o aplicacion. El celular funciona como microfono y el PC muestra el texto como overlay siempre visible.
 
-Este repositorio contiene un MVP funcional construido con Tauri, TypeScript y Rust.
+El audio del celular viaja al PC a traves de un relay WebSocket publico en Railway, asi no importa si el celular esta en otra red o usando datos moviles. No requiere instalar `cloudflared`, no muestra advertencias de certificado y no depende de la red local.
+
+Repositorio con dos componentes: **app de escritorio Tauri** (frontend + Rust) y **relay Go** desplegado en Railway.
 
 ## Que hace
 
-- Abre una app de escritorio en el PC.
-- Muestra un QR para conectar el celular.
-- Sirve una web movil local por HTTPS.
-- Usa el reconocimiento de voz del navegador del celular.
-- Envia texto al PC por WebSocket.
-- Muestra subtitulos en una ventana flotante always-on-top.
+- Abre la app de escritorio en el PC.
+- Se conecta al relay y obtiene un ID de sesion.
+- Muestra un QR con la URL del celular: `https://aiep-relay-production.up.railway.app/m?s=<id>`.
+- El celular abre esa URL (HTTPS valido), pide permiso de microfono y empieza a enviar audio.
+- El PC recibe el audio en vivo y mantiene un contador para verificar el flujo.
+- Muestra el overlay flotante always-on-top con los subtitulos (cuando este Whisper integrado en F2).
 - Permite mostrar, ocultar, cerrar, mover y reposicionar el overlay.
-- Puede usar Cloudflare Tunnel para que el celular no tenga que estar en la misma red.
 - Guarda localmente un registro de lo transcrito y permite descargarlo como TXT.
 
 ## Estado del MVP
 
-La version actual prioriza tener el flujo completo funcionando con baja friccion.
+Esta version logra el flujo completo de captura y transporte de audio:
+
+- F1 cerrado: celular captura audio con `MediaRecorder(opus)`, lo envia en chunks binarios al relay, el relay lo forwardea al PC. Se observa con el contador `Audio recibido: X KB en N chunks`.
+- F2 pendiente: integrar `whisper-rs` en el PC para convertir esos chunks en subtitulos. Hasta entonces el preview muestra "Esperando subtitulos..." pero el audio si esta llegando.
+- F3 pendiente: ventana deslizante / interim captions.
 
 Importante:
 
-- El modo recomendado es Cloudflare Tunnel si `cloudflared` esta instalado.
-- Si Cloudflare Tunnel no esta disponible, la app usa modo red local.
-- No se guarda audio ni texto por defecto.
-- En esta version el audio no se envia al PC: el celular transcribe con Web Speech API y envia texto.
+- No se guarda audio en ningun lado (ni PC, ni relay).
+- El audio pasa por el relay en transito (opus en WebSocket). No se almacena.
 - El overlay es una ventana Tauri transparente, flotante y movible.
-- La web movil usa HTTPS local con certificado autofirmado; el celular debe aceptar la advertencia del navegador.
 
 ## Requisitos
 
 - Windows 10/11.
-- Node.js 20 o superior.
-- npm 10 o superior.
+- Node.js 20 o superior, npm 10 o superior.
 - Rust y Cargo instalados.
-- WebView2 Runtime instalado, normalmente ya viene con Windows moderno.
-- Un celular conectado a la misma red local que el PC.
-- Chrome en Android recomendado para reconocimiento de voz web.
-- `cloudflared` opcional para enlaces publicos sin estar en la misma red.
-
-Puedes revisar versiones con:
+- WebView2 Runtime (suele venir con Windows moderno).
+- Conexion a internet (el relay vive en Railway).
+- Un celular con Chrome en Android (o Safari iOS) para escanear el QR.
 
 ```powershell
 node --version
@@ -51,27 +49,13 @@ cargo --version
 
 ## Instalacion
 
-Clona el repositorio e instala dependencias:
-
 ```powershell
 git clone https://github.com/Dieg0Code/aiep-subtitulos.git
 cd aiep-subtitulos
 npm install
 ```
 
-### Instalar cloudflared opcional
-
-Para usar el modo de enlace publico instala Cloudflare Tunnel CLI (`cloudflared`) y asegurate de que el comando quede disponible en el `PATH`.
-
-En Windows puedes instalarlo desde la documentacion oficial de Cloudflare:
-
-https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-
-Luego verifica:
-
-```powershell
-cloudflared --version
-```
+El relay Go se instala aparte solo si quieres modificarlo localmente; ver `server/README.md`.
 
 ## Ejecutar en desarrollo
 
@@ -79,196 +63,146 @@ cloudflared --version
 npm run tauri dev
 ```
 
-Esto levanta:
+Levanta:
 
-- Vite en `http://localhost:1420`.
-- La app Tauri de escritorio.
-- Un servidor movil local en `https://<ip-del-pc>:8787`.
-- Un servidor HTTP interno en `http://127.0.0.1:8788` para Cloudflare Tunnel.
+- Vite en `http://localhost:1420` (UI Tauri).
+- La app de escritorio Tauri.
+- Cliente WebSocket conectado a `wss://aiep-relay-production.up.railway.app/ws/host`.
 
-La primera compilacion de Rust/Tauri puede tardar varios minutos.
+La primera compilacion de Rust toma varios minutos.
 
 ## Uso
 
 1. Abre la app con `npm run tauri dev`.
-2. Elige el modo de conexion:
-   - `Enlace publico Cloudflare`: recomendado si el celular puede estar fuera de la red.
-   - `Red local`: fallback privado dentro de la misma red.
-3. En la ventana principal, escanea el QR con el celular.
-4. En el celular, acepta permisos de microfono.
-5. Presiona `Iniciar subtitulos`.
+2. Espera el QR (1-2 segundos despues de conectar al relay).
+3. Escanea el QR con el celular.
+4. En el celular acepta permisos de microfono.
+5. Presiona "Iniciar captura".
 6. Habla cerca del celular.
-7. El texto aparecera en la vista previa, en el registro y en el overlay flotante.
+7. En la app del PC el contador "Audio recibido" sube cada ~1.5s y el chip de estado dice "Celular conectado".
 
-## Modos de conexion
+Si pierdes la conexion, el cliente Tauri reintenta con backoff exponencial y, al reconectar, obtiene un nuevo session ID; el QR se regenera y debes volver a escanearlo en el celular.
 
-### Enlace publico Cloudflare
+## Configuracion
 
-La app ejecuta:
+| Variable | Default | Notas |
+|---|---|---|
+| `AIEP_RELAY_URL` | `https://aiep-relay-production.up.railway.app` | URL base del relay. La app deriva `wss://.../ws/host` y construye la URL movil `<base>/m?s=<id>`. Util para apuntar a un relay staging o local. |
+| `RUST_LOG` | `info` | Nivel de log Rust (`tracing_subscriber`). Usa `debug` o `trace` para diagnosticar problemas del cliente WS. |
+
+Ejemplo Powershell:
 
 ```powershell
-cloudflared tunnel --url http://127.0.0.1:8788
+$env:AIEP_RELAY_URL = "http://127.0.0.1:8080"
+$env:RUST_LOG = "debug"
+npm run tauri dev
 ```
-
-Cloudflare entrega una URL `https://*.trycloudflare.com`, y el QR se actualiza automaticamente.
-
-Ventajas:
-
-- El celular puede estar en datos moviles u otra red.
-- El navegador ve HTTPS valido.
-- Evita la advertencia de certificado autofirmado.
-
-Consideraciones:
-
-- El trafico pasa por infraestructura de Cloudflare.
-- La URL es temporal.
-- Requiere tener `cloudflared` instalado.
-
-### Red local
-
-La app usa:
-
-```text
-https://<ip-del-pc>:8787
-```
-
-Ventajas:
-
-- No depende de servicios externos.
-- El trafico queda en la red local.
-
-Consideraciones:
-
-- PC y celular deben estar en la misma red.
-- Puede aparecer advertencia HTTPS por certificado autofirmado.
-- Algunas redes institucionales bloquean comunicacion entre dispositivos.
 
 ## Controles del overlay
 
 Desde la ventana principal:
 
-- `Mostrar overlay`: muestra o recrea el overlay.
-- `Ocultar`: oculta el overlay.
-- `Enviar abajo`: vuelve a posicionarlo abajo, respetando el area util del monitor.
+- "Mostrar": muestra o recrea el overlay.
+- "Ocultar": oculta el overlay.
+- "Abajo": reposiciona el overlay en la parte inferior del monitor primario.
 
 Desde el overlay:
 
 - Arrastra el bloque negro para moverlo.
 - Pasa el mouse sobre el overlay para ver controles.
-- `Pausar`: congela los subtitulos.
-- `Tamano`: cambia el tamano del texto.
-- `X`: oculta el overlay.
+- "Pausar": congela los subtitulos.
+- "Tamano": cambia el tamano del texto.
+- "X": oculta el overlay.
 
 ## Registro de transcripcion
 
-La app puede guardar localmente lo que se va diciendo.
-
-- El registro queda en `localStorage` de la webview Tauri.
-- No se sube automaticamente a ningun servidor.
-- Puedes desactivar `Guardar lo transcrito en esta app`.
-- Puedes descargar el registro como archivo `.txt`.
-- Puedes limpiar el registro desde la app.
+- El registro queda en `localStorage` del webview Tauri.
+- Solo se llena cuando el celular envia texto via "Modo respaldo escrito" (textarea manual). El audio capturado se almacena en ninguna parte.
+- Puedes desactivar "Guardar lo transcrito en esta app" en Opciones.
+- Puedes descargar el registro como `.txt` o limpiarlo desde la app.
 
 ## Build
 
-Compilar frontend:
-
 ```powershell
-npm run build
+npm run build              # frontend Vite + tsc
+cd src-tauri; cargo check  # validar Rust
+npm run tauri build        # instalador/app de escritorio
 ```
 
-Verificar Rust:
-
-```powershell
-cd src-tauri
-cargo check
-```
-
-Construir instalador/app de escritorio:
-
-```powershell
-npm run tauri build
-```
-
-Los artefactos se generan dentro de `src-tauri/target`.
-
-## Solucion de problemas
-
-### El celular no abre el QR
-
-Revisa:
-
-- PC y celular en la misma red WiFi.
-- El celular no esta usando datos moviles.
-- El firewall de Windows permite conexiones al puerto `8787`.
-- La red no tiene aislamiento de clientes.
-
-Si quieres evitar esos requisitos, usa `Enlace publico Cloudflare`.
-
-### Cloudflare no inicia
-
-Revisa:
-
-- `cloudflared --version` funciona en PowerShell.
-- El puerto local `8788` no esta ocupado.
-- Tu conexion permite abrir tuneles salientes.
-
-### El navegador bloquea el microfono
-
-La web movil usa HTTPS local con certificado autofirmado. Debes aceptar la advertencia del navegador. Chrome en Android suele funcionar mejor para Web Speech API.
-
-### El overlay no aparece
-
-Usa `Mostrar overlay` en la ventana principal. Si aparece fuera de lugar, usa `Enviar abajo`.
-
-### El overlay no se mueve
-
-Arrastra el bloque negro del subtitulo, no los botones. El bloque usa la API `startDragging` de Tauri.
-
-### Las palabras se repiten
-
-El MVP incluye limpieza de repeticiones, pero Web Speech API puede devolver frases parciales crecientes. La ruta tecnica recomendada para mejorar esto es enviar audio al PC y transcribir con `whisper.cpp`, `faster-whisper` u OpenAI.
+Artefactos en `src-tauri/target/release/bundle/`.
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
-  PC["App Tauri en PC"] --> QR["QR con URL local"]
-  QR --> Phone["Web movil en celular"]
-  Phone --> Mic["Microfono / Web Speech API"]
-  Mic --> WS["WebSocket seguro local"]
-  WS --> Rust["Servidor Rust Axum"]
-  Rust --> Events["Eventos Tauri"]
-  Events --> Overlay["Overlay flotante"]
+  Phone["Celular / Chrome Android"] -- WSS audio opus --> Relay["Railway Go relay"]
+  Relay -- WSS audio + status --> Tauri["PC Tauri WS client"]
+  Tauri --> Overlay["Overlay flotante"]
+  Tauri --> Whisper["Whisper local (F2)"]
+  Whisper --> Overlay
 ```
+
+Protocolo del relay (`server/main.go`, `server/hub.go`):
+
+- **Host** (Tauri PC) conecta a `wss://<relay>/ws/host`. El relay responde con `{"type":"session","id":"ABC123"}` y forwardea todos los frames que llegan del guest.
+- **Guest** (celular) conecta a `wss://<relay>/ws/guest?s=<id>`. El relay forwardea binario (audio opus) y JSON al host. Al parear / despareceer, el relay inyecta al host `{"type":"status","state":"phone-connected|phone-disconnected"}`.
+
+Ver `server/README.md` para el detalle del relay.
 
 ## Estructura
 
-- `src/main.ts`: UI principal, overlay y eventos Tauri.
-- `src/styles.css`: estilos de la app y subtitulos.
-- `src-tauri/src/lib.rs`: servidor HTTPS local, WebSocket, comandos Tauri y posicionamiento del overlay.
-- `src-tauri/tauri.conf.json`: configuracion de ventanas Tauri.
-- `src-tauri/capabilities/default.json`: permisos Tauri.
+- `src/main.ts`: UI principal y overlay, listeners de eventos Tauri.
+- `src/styles.css`: estilos.
+- `src-tauri/src/lib.rs`: bootstrap Tauri, comandos del overlay, monta el cliente del relay.
+- `src-tauri/src/relay.rs`: cliente WebSocket, reconexion exponencial, heartbeat 30s, ruteo de frames a eventos Tauri.
+- `src-tauri/tauri.conf.json`: ventanas Tauri (`main` y `overlay`).
+- `server/`: codigo Go del relay (deploy Railway, tests, Dockerfile).
+- `.github/workflows/relay-ci.yml`: CI del relay (vet + test -race + build).
 
 ## Privacidad
 
-Por defecto:
+- No se guarda audio en disco ni en PC ni en el relay.
+- El audio pasa por el relay (Railway, region `us-east`) en transito como WebSocket binario opus. No se persiste.
+- La transcripcion del modo respaldo escrito se guarda localmente solo si la opcion esta activa.
+- Los logs del relay registran metadata (timestamps, IPs en `RemoteAddr`, byte counts no se loguean), no contenido.
 
-- No se guarda audio.
-- No se envia audio a la nube.
-- La transcripcion se guarda localmente solo si la opcion esta activa.
-- En modo red local, la comunicacion ocurre entre celular y PC.
-- En modo Cloudflare, el trafico pasa por Cloudflare Tunnel.
+Si necesitas un modelo 100% offline, queda en el roadmap: integracion de Whisper local en F2 + opcion de modo aula offline (relay en LAN, fuera de scope MVP).
 
-El punto debil actual es que Web Speech API puede depender del navegador/proveedor. Para una version de privacidad fuerte, la siguiente etapa debe mover la transcripcion al PC con un motor local.
+## Solucion de problemas
+
+### El QR no aparece
+
+- Revisa `RUST_LOG=debug npm run tauri dev` y busca `relay: connecting` / `relay: connect failed`.
+- Verifica que tienes internet: `curl https://aiep-relay-production.up.railway.app/healthz` debe devolver `ok`.
+- Si el relay esta caido, el cliente reintenta cada 1-30s; verifica desde el dashboard de Railway.
+
+### El celular no abre el QR
+
+- Asegurate de tener conexion a internet en el celular (red o datos moviles, no importa cual).
+- El QR codifica una URL `https://aiep-relay-production.up.railway.app/m?s=...` — debe abrirse sin warning de certificado en Chrome.
+
+### Audio no llega al PC
+
+- Verifica que el chip de estado del celular dice "Conectado al PC" (verde).
+- En el celular, asegurate de haber dado permiso de microfono.
+- El contador "Audio recibido" en el PC debe subir cada ~1.5s mientras hables.
+- Si el celular se bloquea, el navegador puede suspender la captura tras unos minutos; vuelve a desbloquear y la captura se reanuda automaticamente.
+
+### El overlay no aparece
+
+- Usa "Mostrar overlay". Si aparece fuera de lugar, usa "Abajo".
+
+### El overlay no se mueve
+
+- Arrastra el bloque negro del subtitulo, no los botones. Usa la API `startDragging` de Tauri.
 
 ## Roadmap
 
-- Streaming de audio desde celular hacia PC con WebRTC o WebSocket.
-- Transcripcion local con `whisper.cpp` o `faster-whisper`.
-- Opcion de proveedor nube configurable.
-- Guardar preferencias locales de posicion, tamano y opacidad.
-- Mejor flujo de certificado local para evitar advertencias HTTPS.
+- **F2**: integrar `whisper-rs` (whisper.cpp embebido) en el PC para transcribir los chunks de audio en tiempo real.
+- **F3**: ventana deslizante con interim captions para feel de tiempo real.
+- **F4**: descarga / setup del modelo Whisper al primer uso.
+- Opcion de proveedor cloud configurable (OpenAI / Deepgram) como alternativa a Whisper local.
+- Guardar preferencias locales de posicion, tamano y opacidad del overlay.
 - Empaquetado instalable para docentes no tecnicos.
 
 ## Licencia
