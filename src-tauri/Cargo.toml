@@ -29,3 +29,4 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 whisper-rs-sys = "0.15.0"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }

@@ -1,6 +1,8 @@
 use std::{
     collections::VecDeque,
     ffi::{CStr, CString},
+    fs::{self, File},
+    io::{Read, Write},
     path::PathBuf,
     ptr::NonNull,
     sync::{mpsc, Arc, RwLock},
@@ -19,6 +21,9 @@ const WINDOW_SAMPLES: usize = SAMPLE_RATE * 5 / 2; // 2.5s
 const OVERLAP_SAMPLES: usize = SAMPLE_RATE / 2; // 0.5s
 const MAX_BUFFER_SAMPLES: usize = SAMPLE_RATE * 15;
 const MODEL_FILE_NAME: &str = "ggml-base.bin";
+const MODEL_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true";
+const MIN_MODEL_BYTES: u64 = 100 * 1024 * 1024;
 
 pub struct WhisperUiState {
     status: RwLock<String>,
@@ -65,6 +70,12 @@ struct CaptionPayload {
     text: String,
     #[serde(rename = "isFinal")]
     is_final: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct DownloadProgressPayload {
+    downloaded: u64,
+    total: Option<u64>,
 }
 
 struct WhisperContext {
@@ -149,10 +160,6 @@ impl WhisperEngine {
 }
 
 impl LocalWhisper {
-    pub fn disabled() -> Self {
-        Self { tx: None }
-    }
-
     pub fn push_pcm_bytes(&self, bytes: &[u8]) {
         let Some(tx) = &self.tx else {
             return;
@@ -193,16 +200,7 @@ pub fn spawn_local_whisper(
     );
 
     if !model_path.is_file() {
-        warn!(path = %model_path.display(), "whisper: model not found");
-        emit_status(
-            &app,
-            &state,
-            &ui_state,
-            &base_url,
-            "missing-model",
-            CaptureMode::Speech,
-        );
-        return LocalWhisper::disabled();
+        warn!(path = %model_path.display(), "whisper: model not found, downloading");
     }
 
     let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(1);
@@ -258,6 +256,8 @@ fn run_worker(
     rx: mpsc::Receiver<Vec<f32>>,
     model_path: PathBuf,
 ) -> Result<(), String> {
+    ensure_model_available(&app, &state_for_mode, &ui_state, &base_url, &model_path)?;
+
     info!(path = %model_path.display(), "whisper: loading model");
     let mut engine = WhisperEngine::new(model_path)?;
 
@@ -310,6 +310,90 @@ fn run_worker(
     }
 
     Ok(())
+}
+
+fn ensure_model_available(
+    app: &AppHandle,
+    state: &Arc<RelayState>,
+    ui_state: &Arc<WhisperUiState>,
+    base_url: &str,
+    model_path: &PathBuf,
+) -> Result<(), String> {
+    if is_valid_model(model_path) {
+        return Ok(());
+    }
+
+    emit_status(
+        app,
+        state,
+        ui_state,
+        base_url,
+        "downloading-model",
+        CaptureMode::Speech,
+    );
+
+    let parent = model_path
+        .parent()
+        .ok_or_else(|| "invalid whisper model directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| format!("failed to create model dir: {error}"))?;
+
+    let temp_path = model_path.with_extension("bin.download");
+    if temp_path.exists() {
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    info!(url = MODEL_URL, path = %model_path.display(), "whisper: downloading model");
+    let mut response = reqwest::blocking::get(MODEL_URL)
+        .map_err(|error| format!("failed to start model download: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("failed to download model: {error}"))?;
+    let total = response.content_length();
+    let mut file = File::create(&temp_path)
+        .map_err(|error| format!("failed to create model file: {error}"))?;
+    let mut downloaded = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+
+    loop {
+        let read = response
+            .read(&mut buffer)
+            .map_err(|error| format!("failed to read model download: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        file.write_all(&buffer[..read])
+            .map_err(|error| format!("failed to write model file: {error}"))?;
+        downloaded += read as u64;
+        let _ = app.emit(
+            "whisper-download-progress",
+            DownloadProgressPayload { downloaded, total },
+        );
+    }
+    file.flush()
+        .map_err(|error| format!("failed to flush model file: {error}"))?;
+
+    let size = fs::metadata(&temp_path)
+        .map_err(|error| format!("failed to read downloaded model: {error}"))?
+        .len();
+    if size < MIN_MODEL_BYTES {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!("downloaded model is too small: {size} bytes"));
+    }
+
+    if model_path.exists() {
+        fs::remove_file(model_path)
+            .map_err(|error| format!("failed to replace old model: {error}"))?;
+    }
+    fs::rename(&temp_path, model_path)
+        .map_err(|error| format!("failed to install downloaded model: {error}"))?;
+
+    info!(path = %model_path.display(), bytes = size, "whisper: model downloaded");
+    Ok(())
+}
+
+fn is_valid_model(model_path: &PathBuf) -> bool {
+    fs::metadata(model_path)
+        .map(|metadata| metadata.len() >= MIN_MODEL_BYTES)
+        .unwrap_or(false)
 }
 
 fn transcribe_window(engine: &mut WhisperEngine, samples: &[f32]) -> Result<String, String> {

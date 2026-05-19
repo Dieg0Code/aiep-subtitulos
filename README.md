@@ -32,7 +32,7 @@ El resto de este README es para desarrolladores. Si solo quieres usar la app, co
 Esta version logra el flujo completo de captura, transporte y transcripcion local cuando el modelo esta instalado:
 
 - F1 cerrado: celular captura audio y lo envia en chunks binarios al relay, el relay lo forwardea al PC. Se observa con el contador `Audio recibido: X KB en N chunks`.
-- F2 simple: `whisper-rs-sys` corre en el PC con CPU y modelo `ggml-base.bin` externo. Si falta el modelo, la app avisa y el celular cae automaticamente a reconocimiento web como respaldo.
+- F2 simple: `whisper-rs-sys` corre en el PC con CPU y modelo `ggml-base.bin`. Si falta el modelo, la app lo descarga automaticamente y el celular cae a reconocimiento web como respaldo mientras termina.
 - F3 pendiente: ventana deslizante / interim captions.
 
 Importante:
@@ -49,7 +49,7 @@ Importante:
 - CMake instalado y disponible en `PATH` para compilar `whisper.cpp`.
 - `libclang` visible para bindgen de `whisper-rs-sys`. En Windows local puede ser MSYS2 clang (`LIBCLANG_PATH=C:\msys64\mingw64\bin`) o LLVM.
 - WebView2 Runtime (suele venir con Windows moderno).
-- Conexion a internet (el relay vive en Railway).
+- Conexion a internet (el relay vive en Railway y el primer arranque descarga el modelo Whisper si falta).
 - Un celular con Chrome en Android (o Safari iOS) para escanear el QR.
 
 ```powershell
@@ -86,8 +86,8 @@ La primera compilacion de Rust toma varios minutos.
 
 ## Uso
 
-1. Instala el modelo Whisper si quieres transcripcion local: copia `ggml-base.bin` en `%APPDATA%\cl.aiep.subtitulos\models\ggml-base.bin`.
-2. Abre la app con `npm run tauri dev`.
+1. Abre la app con `npm run tauri dev`.
+2. Si falta `ggml-base.bin`, espera la descarga automatica del modelo (~141 MB). Mientras baja, el QR usa reconocimiento web del celular como respaldo.
 3. Espera el QR (1-2 segundos despues de conectar al relay).
 4. Escanea el QR con el celular.
 5. En el celular acepta permisos de microfono.
@@ -104,11 +104,12 @@ Si pierdes la conexion, el cliente Tauri reintenta con backoff exponencial y, al
 | `AIEP_RELAY_URL` | `https://aiep-relay-production.up.railway.app` | URL base del relay. La app deriva `wss://.../ws/host` y construye la URL movil `<base>/m?s=<id>`. Util para apuntar a un relay staging o local. |
 | `RUST_LOG` | `info` | Nivel de log Rust (`tracing_subscriber`). Usa `debug` o `trace` para diagnosticar problemas del cliente WS. |
 
-Modelo Whisper esperado:
+Modelo Whisper:
 
 ```powershell
-mkdir "$env:APPDATA\cl.aiep.subtitulos\models"
-# Copia ahi el modelo ggml-base.bin descargado desde whisper.cpp / Hugging Face.
+# La app descarga automaticamente ggml-base.bin si falta.
+# Ruta final esperada:
+$env:APPDATA\cl.aiep.subtitulos\models\ggml-base.bin
 ```
 
 Ejemplo Powershell:
@@ -203,11 +204,12 @@ Whisper local corre en el PC y no sube audio a un proveedor de transcripcion. El
 - Asegurate de tener conexion a internet en el celular (red o datos moviles, no importa cual).
 - El QR codifica una URL `https://aiep-relay-production.up.railway.app/m?s=...` — debe abrirse sin warning de certificado en Chrome.
 
-### Whisper dice "Modelo no encontrado"
+### Whisper no descarga o queda en respaldo web
 
-- Copia `ggml-base.bin` en `%APPDATA%\cl.aiep.subtitulos\models\ggml-base.bin`.
-- Reinicia la app. El estado debe cambiar a "Whisper local listo".
-- Mientras falte el modelo, el QR fuerza `mode=speech` y el celular usa reconocimiento web como respaldo.
+- Verifica que el PC tenga internet y acceso a Hugging Face.
+- La app descarga `ggml-base.bin` en `%APPDATA%\cl.aiep.subtitulos\models\ggml-base.bin`.
+- Mientras falta o falla la descarga, el QR fuerza `mode=speech` y el celular usa reconocimiento web como respaldo.
+- Si ya tienes el archivo, puedes copiarlo manualmente a esa ruta y reiniciar la app.
 
 ### Audio no llega al PC
 
@@ -227,7 +229,7 @@ Whisper local corre en el PC y no sube audio a un proveedor de transcripcion. El
 ## Roadmap
 
 - **F3**: ventana deslizante con interim captions para feel de tiempo real.
-- **F4**: descarga / setup del modelo Whisper al primer uso.
+- **F4**: refinamiento de experiencia de primer uso y empaquetado final.
 - Opcion de proveedor cloud configurable (OpenAI / Deepgram) como alternativa a Whisper local.
 - Guardar preferencias locales de posicion, tamano y opacidad del overlay.
 - Empaquetado instalable para docentes no tecnicos.

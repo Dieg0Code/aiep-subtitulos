@@ -47,7 +47,7 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 
 ### Tauri side (`src-tauri/`)
 
-- **Whisper F2 simple**: `src/whisper.rs` looks for `ggml-base.bin` at `app_data_dir()/models/ggml-base.bin` (Windows: `%APPDATA%\cl.aiep.subtitulos\models\ggml-base.bin`). If present, it loads `whisper-rs-sys` CPU-only and transcribes PCM windows of 2.5s with 0.5s overlap, `language=es`, `n_threads=2`, `single_segment=true`. It emits `caption-update` and `whisper-status`. If missing or failed, mobile mode falls back to `speech`.
+- **Whisper F2 simple**: `src/whisper.rs` looks for `ggml-base.bin` at `app_data_dir()/models/ggml-base.bin` (Windows: `%APPDATA%\cl.aiep.subtitulos\models\ggml-base.bin`). If missing, it downloads the model from Hugging Face, emits `whisper-download-progress`, keeps mobile mode on `speech`, then loads `whisper-rs-sys` CPU-only and transcribes PCM windows of 2.5s with 0.5s overlap, `language=es`, `n_threads=2`, `single_segment=true`. It emits `caption-update` and `whisper-status`. If download or load fails, mobile mode falls back to `speech`.
 - `mobile_url` now includes `mode=pcm|speech`; `pcm` is used only after local Whisper is ready.
 
 - **`src/lib.rs`** — bootstrap. `setup()` initializes `tracing_subscriber`, creates `Arc<RelayState>`, calls `spawn_relay_client(...)`, and positions the overlay. Exposes Tauri commands: `mobile_url` (read cached URL), `show_overlay` / `hide_overlay` / `close_overlay` / `reset_overlay_position`. Window-close on `main` exits the app.
@@ -62,9 +62,9 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 ### Frontend (`src/`)
 
 - **`src/main.ts`** — single entry, branches on `location.pathname` between `renderControl` (main window) and `renderOverlay` (overlay window).
-  - `wireCaptionListeners` subscribes to: `caption-update`, `phone-status`, `mobile-url-update`, `relay-status`, `whisper-status`, `audio-bytes`.
+  - `wireCaptionListeners` subscribes to: `caption-update`, `phone-status`, `mobile-url-update`, `relay-status`, `whisper-status`, `whisper-download-progress`, `audio-bytes`.
   - `updateRelayStatus(status)` (`"connecting"`/`"online"`/`"reconnecting"`) updates `#qr-status` with proper colors via `data-state` attribute.
-  - `updateWhisperStatus(status)` (`"missing-model"`/`"loading"`/`"ready"`/`"transcribing"`/`"error"`) updates the engine UI and fallback messaging.
+  - `updateWhisperStatus(status)` (`"missing-model"`/`"loading"`/`"downloading-model"`/`"ready"`/`"transcribing"`/`"error"`) updates the engine UI and fallback messaging.
   - `mobile_url` invoke at startup is just a one-shot read; the source of truth is the `mobile-url-update` event which fires on each new session.
   - Transcript log and settings persist only in `localStorage` (`aiep-subtitulos.transcript`, `aiep-subtitulos.settings`); transcript array capped at 500 entries.
 
@@ -99,7 +99,8 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 | `caption-update` | `{ text, isFinal }` (camelCase) | Guest manual-text backup |
 | `audio-bytes` | `number` | Bytes in the latest binary chunk |
 | `relay-status` | `"connecting" \| "online" \| "reconnecting"` | WS client state transitions |
-| `whisper-status` | `"missing-model" \| "loading" \| "ready" \| "transcribing" \| "error"` | Local Whisper lifecycle |
+| `whisper-status` | `"missing-model" \| "loading" \| "downloading-model" \| "ready" \| "transcribing" \| "error"` | Local Whisper lifecycle |
+| `whisper-download-progress` | `{ downloaded, total? }` | First-run model download progress in bytes |
 
 ## Conventions worth knowing
 

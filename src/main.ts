@@ -122,6 +122,7 @@ async function renderControl(root: HTMLDivElement) {
         </label>
         <p class="whisper-status" id="whisper-status">Cargando Whisper local...</p>
         <p class="model-path" id="model-path"></p>
+        <p class="download-progress" id="download-progress"></p>
         <label class="check-field">
           <input id="save-transcript" type="checkbox" />
           Guardar lo transcrito en esta app
@@ -213,6 +214,7 @@ async function renderControl(root: HTMLDivElement) {
     onMobileUrl: updateMobileUrl,
     onRelayStatus: updateRelayStatus,
     onWhisperStatus: updateWhisperStatus,
+    onWhisperDownloadProgress: updateWhisperDownloadProgress,
     onAudioBytes: (bytes) => {
       audioStats.totalBytes += bytes;
       audioStats.chunks += 1;
@@ -445,6 +447,7 @@ function wireCaptionListeners(handlers: {
   onMobileUrl?: (url: string) => void;
   onRelayStatus?: (status: RelayStatus) => void;
   onWhisperStatus?: (status: WhisperStatus) => void;
+  onWhisperDownloadProgress?: (progress: DownloadProgressPayload) => void;
   onAudioBytes?: (bytes: number) => void;
 }) {
   listen<CaptionPayload>("caption-update", (event) => {
@@ -465,6 +468,10 @@ function wireCaptionListeners(handlers: {
 
   listen<WhisperStatus>("whisper-status", (event) => {
     handlers.onWhisperStatus?.(event.payload);
+  });
+
+  listen<DownloadProgressPayload>("whisper-download-progress", (event) => {
+    handlers.onWhisperDownloadProgress?.(event.payload);
   });
 
   listen<number>("audio-bytes", (event) => {
@@ -516,7 +523,18 @@ async function updateMobileUrl(url: string) {
 }
 
 type RelayStatus = "connecting" | "online" | "reconnecting";
-type WhisperStatus = "missing-model" | "loading" | "ready" | "transcribing" | "error";
+type WhisperStatus =
+  | "missing-model"
+  | "loading"
+  | "downloading-model"
+  | "ready"
+  | "transcribing"
+  | "error";
+
+type DownloadProgressPayload = {
+  downloaded: number;
+  total?: number;
+};
 
 function updateRelayStatus(status: RelayStatus) {
   const el = document.querySelector<HTMLParagraphElement>("#qr-status");
@@ -557,6 +575,7 @@ async function updateInitialWhisperStatus() {
 function updateWhisperStatus(status: WhisperStatus) {
   const el = document.querySelector<HTMLParagraphElement>("#whisper-status");
   const speechEngine = document.querySelector<HTMLSelectElement>("#speech-engine");
+  const progress = document.querySelector<HTMLParagraphElement>("#download-progress");
   if (!el) return;
 
   el.dataset.state = status;
@@ -565,14 +584,35 @@ function updateWhisperStatus(status: WhisperStatus) {
       ? "Whisper local listo. El celular enviara audio PCM al PC."
       : status === "transcribing"
         ? "Whisper esta transcribiendo audio del celular..."
+        : status === "downloading-model"
+          ? "Descargando modelo Whisper local. Mientras tanto se usara reconocimiento web."
         : status === "missing-model"
           ? "Modelo no encontrado. Se usara reconocimiento web del celular como respaldo."
           : status === "error"
             ? "Whisper tuvo un error. Se usara reconocimiento web del celular como respaldo."
             : "Cargando Whisper local...";
 
+  if (progress && status !== "downloading-model") {
+    progress.textContent = "";
+  }
+
   if (speechEngine) {
-    speechEngine.value = status === "ready" || status === "transcribing" ? "whisper-local" : "relay-audio";
+    speechEngine.value =
+      status === "ready" || status === "transcribing" ? "whisper-local" : "relay-audio";
+  }
+}
+
+function updateWhisperDownloadProgress(progress: DownloadProgressPayload) {
+  const el = document.querySelector<HTMLParagraphElement>("#download-progress");
+  if (!el) return;
+
+  const downloadedMb = progress.downloaded / 1024 / 1024;
+  if (progress.total) {
+    const totalMb = progress.total / 1024 / 1024;
+    const percent = Math.min(100, (progress.downloaded / progress.total) * 100);
+    el.textContent = `Descarga del modelo: ${percent.toFixed(0)}% (${downloadedMb.toFixed(1)} de ${totalMb.toFixed(1)} MB)`;
+  } else {
+    el.textContent = `Descarga del modelo: ${downloadedMb.toFixed(1)} MB`;
   }
 }
 
