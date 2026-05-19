@@ -1,6 +1,7 @@
 mod relay;
+mod whisper;
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow,
@@ -9,10 +10,21 @@ use tauri::{
 use tracing_subscriber::EnvFilter;
 
 use crate::relay::{relay_config_from_env, spawn_relay_client, RelayState};
+use crate::whisper::{model_path, spawn_local_whisper, WhisperUiState};
 
 #[tauri::command]
 fn mobile_url(state: tauri::State<'_, Arc<RelayState>>) -> String {
     state.mobile_url()
+}
+
+#[tauri::command]
+fn whisper_model_path(app: AppHandle) -> Result<String, String> {
+    model_path(&app).map(|path| path.display().to_string())
+}
+
+#[tauri::command]
+fn whisper_status(state: tauri::State<'_, Arc<WhisperUiState>>) -> String {
+    state.status()
 }
 
 #[tauri::command]
@@ -48,7 +60,9 @@ fn reset_overlay_position(app: AppHandle) -> Result<&'static str, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .with_target(false)
         .try_init();
 
@@ -63,11 +77,26 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let state = Arc::new(RelayState::new());
+            let whisper_ui_state = Arc::new(WhisperUiState::new());
             app.manage(state.clone());
+            app.manage(whisper_ui_state.clone());
 
             let cfg = relay_config_from_env();
+            let model_path = model_path(app.handle()).unwrap_or_else(|error| {
+                tracing::warn!(?error, "whisper: could not resolve model path");
+                PathBuf::from("ggml-base.bin")
+            });
+            tracing::info!(path = %model_path.display(), "whisper model path");
+            let whisper = spawn_local_whisper(
+                app.handle().clone(),
+                state.clone(),
+                whisper_ui_state,
+                cfg.base_url.clone(),
+                model_path,
+            );
+
             tracing::info!(base_url = %cfg.base_url, "starting relay client");
-            spawn_relay_client(app.handle().clone(), cfg, state);
+            spawn_relay_client(app.handle().clone(), cfg, state, whisper);
 
             position_overlay(app.handle());
             Ok(())
@@ -84,7 +113,9 @@ pub fn run() {
             close_overlay,
             show_overlay,
             hide_overlay,
-            reset_overlay_position
+            reset_overlay_position,
+            whisper_model_path,
+            whisper_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -104,11 +135,8 @@ fn position_overlay(app: &AppHandle) {
     let height = 132_u32;
     let bottom_margin = 28_u32;
     let x = work_area.position.x + ((work_area.size.width.saturating_sub(width)) / 2) as i32;
-    let y = work_area.position.y
-        + work_area
-            .size
-            .height
-            .saturating_sub(height + bottom_margin) as i32;
+    let y =
+        work_area.position.y + work_area.size.height.saturating_sub(height + bottom_margin) as i32;
 
     let _ = overlay.set_size(Size::Physical(PhysicalSize { width, height }));
     let _ = overlay.set_position(Position::Physical(PhysicalPosition { x, y }));

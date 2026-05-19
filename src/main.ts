@@ -115,11 +115,13 @@ async function renderControl(root: HTMLDivElement) {
         <label class="field">
           Motor de transcripcion
           <select id="speech-engine">
-            <option value="relay-audio">Audio al PC via relay (MVP)</option>
-            <option value="whisper-local" disabled>Whisper local (proximamente)</option>
+            <option value="whisper-local">Whisper local en este PC</option>
+            <option value="relay-audio">Reconocimiento web del celular (respaldo)</option>
             <option value="openai" disabled>OpenAI speech-to-text (proximamente)</option>
           </select>
         </label>
+        <p class="whisper-status" id="whisper-status">Cargando Whisper local...</p>
+        <p class="model-path" id="model-path"></p>
         <label class="check-field">
           <input id="save-transcript" type="checkbox" />
           Guardar lo transcrito en esta app
@@ -162,6 +164,7 @@ async function renderControl(root: HTMLDivElement) {
 
   const mobileUrl = await invoke<string>("mobile_url");
   await updateMobileUrl(mobileUrl);
+  await updateWhisperModelPath();
   wireSettings(settings);
   renderTranscriptLog();
 
@@ -209,6 +212,7 @@ async function renderControl(root: HTMLDivElement) {
     onStatus: updatePhoneStatus,
     onMobileUrl: updateMobileUrl,
     onRelayStatus: updateRelayStatus,
+    onWhisperStatus: updateWhisperStatus,
     onAudioBytes: (bytes) => {
       audioStats.totalBytes += bytes;
       audioStats.chunks += 1;
@@ -216,6 +220,7 @@ async function renderControl(root: HTMLDivElement) {
       renderAudioStats(audioStats);
     },
   });
+  updateInitialWhisperStatus();
 }
 
 function renderAudioStats(stats: { totalBytes: number; chunks: number; lastUpdate: number }) {
@@ -439,6 +444,7 @@ function wireCaptionListeners(handlers: {
   onStatus?: (status: string) => void;
   onMobileUrl?: (url: string) => void;
   onRelayStatus?: (status: RelayStatus) => void;
+  onWhisperStatus?: (status: WhisperStatus) => void;
   onAudioBytes?: (bytes: number) => void;
 }) {
   listen<CaptionPayload>("caption-update", (event) => {
@@ -455,6 +461,10 @@ function wireCaptionListeners(handlers: {
 
   listen<RelayStatus>("relay-status", (event) => {
     handlers.onRelayStatus?.(event.payload);
+  });
+
+  listen<WhisperStatus>("whisper-status", (event) => {
+    handlers.onWhisperStatus?.(event.payload);
   });
 
   listen<number>("audio-bytes", (event) => {
@@ -506,6 +516,7 @@ async function updateMobileUrl(url: string) {
 }
 
 type RelayStatus = "connecting" | "online" | "reconnecting";
+type WhisperStatus = "missing-model" | "loading" | "ready" | "transcribing" | "error";
 
 function updateRelayStatus(status: RelayStatus) {
   const el = document.querySelector<HTMLParagraphElement>("#qr-status");
@@ -522,6 +533,47 @@ function updateRelayStatus(status: RelayStatus) {
         ? "Sin conexion al relay. Reintentando..."
         : "Conectando al relay...";
   el.dataset.state = status;
+}
+
+async function updateWhisperModelPath() {
+  const el = document.querySelector<HTMLParagraphElement>("#model-path");
+  if (!el) return;
+  try {
+    const path = await invoke<string>("whisper_model_path");
+    el.textContent = `Modelo: ${path}`;
+  } catch (error) {
+    el.textContent = `No se pudo resolver la ruta del modelo: ${String(error)}`;
+  }
+}
+
+async function updateInitialWhisperStatus() {
+  try {
+    updateWhisperStatus(await invoke<WhisperStatus>("whisper_status"));
+  } catch (error) {
+    console.error("No se pudo leer el estado de Whisper", error);
+  }
+}
+
+function updateWhisperStatus(status: WhisperStatus) {
+  const el = document.querySelector<HTMLParagraphElement>("#whisper-status");
+  const speechEngine = document.querySelector<HTMLSelectElement>("#speech-engine");
+  if (!el) return;
+
+  el.dataset.state = status;
+  el.textContent =
+    status === "ready"
+      ? "Whisper local listo. El celular enviara audio PCM al PC."
+      : status === "transcribing"
+        ? "Whisper esta transcribiendo audio del celular..."
+        : status === "missing-model"
+          ? "Modelo no encontrado. Se usara reconocimiento web del celular como respaldo."
+          : status === "error"
+            ? "Whisper tuvo un error. Se usara reconocimiento web del celular como respaldo."
+            : "Cargando Whisper local...";
+
+  if (speechEngine) {
+    speechEngine.value = status === "ready" || status === "transcribing" ? "whisper-local" : "relay-audio";
+  }
 }
 
 function loadSettings() {

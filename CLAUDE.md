@@ -10,6 +10,8 @@ npm run tauri dev                      # run desktop app + Vite dev server + rel
 npm run build                          # tsc + vite build (typecheck + frontend bundle)
 npm run tauri build                    # produce installer in src-tauri/target/release/bundle
 cd src-tauri; cargo check              # verify Rust compiles without a full build
+cmake --version                        # required by whisper.cpp build
+rustup target list --installed         # Windows Whisper builds should prefer x86_64-pc-windows-msvc
 
 cd server; go test -count=1 ./...      # Go relay tests
 cd server; go run .                    # run relay locally on :8080 (override with PORT=)
@@ -45,6 +47,9 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 
 ### Tauri side (`src-tauri/`)
 
+- **Whisper F2 simple**: `src/whisper.rs` looks for `ggml-base.bin` at `app_data_dir()/models/ggml-base.bin` (Windows: `%APPDATA%\cl.aiep.subtitulos\models\ggml-base.bin`). If present, it loads `whisper-rs-sys` CPU-only and transcribes PCM windows of 2.5s with 0.5s overlap, `language=es`, `n_threads=2`, `single_segment=true`. It emits `caption-update` and `whisper-status`. If missing or failed, mobile mode falls back to `speech`.
+- `mobile_url` now includes `mode=pcm|speech`; `pcm` is used only after local Whisper is ready.
+
 - **`src/lib.rs`** — bootstrap. `setup()` initializes `tracing_subscriber`, creates `Arc<RelayState>`, calls `spawn_relay_client(...)`, and positions the overlay. Exposes Tauri commands: `mobile_url` (read cached URL), `show_overlay` / `hide_overlay` / `close_overlay` / `reset_overlay_position`. Window-close on `main` exits the app.
 - **`src/relay.rs`** — owns the WS client. `relay_config_from_env()` reads `AIEP_RELAY_URL` (default `https://aiep-relay-production.up.railway.app`) and derives the `wss://.../ws/host` URL. `spawn_relay_client(...)` runs a `tauri::async_runtime::spawn` loop with exponential backoff (1s→30s) and a 30s heartbeat ping. Frame routing inside `run_session`:
   - Text `{type:"session", id}` → store ID, build `<base>/m?s=<id>`, emit `mobile-url-update`.
@@ -57,16 +62,19 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 ### Frontend (`src/`)
 
 - **`src/main.ts`** — single entry, branches on `location.pathname` between `renderControl` (main window) and `renderOverlay` (overlay window).
-  - `wireCaptionListeners` subscribes to: `caption-update`, `phone-status`, `mobile-url-update`, `relay-status`, `audio-bytes`.
+  - `wireCaptionListeners` subscribes to: `caption-update`, `phone-status`, `mobile-url-update`, `relay-status`, `whisper-status`, `audio-bytes`.
   - `updateRelayStatus(status)` (`"connecting"`/`"online"`/`"reconnecting"`) updates `#qr-status` with proper colors via `data-state` attribute.
+  - `updateWhisperStatus(status)` (`"missing-model"`/`"loading"`/`"ready"`/`"transcribing"`/`"error"`) updates the engine UI and fallback messaging.
   - `mobile_url` invoke at startup is just a one-shot read; the source of truth is the `mobile-url-update` event which fires on each new session.
   - Transcript log and settings persist only in `localStorage` (`aiep-subtitulos.transcript`, `aiep-subtitulos.settings`); transcript array capped at 500 entries.
 
 ### Go relay (`server/`)
 
+- **`server/mobile.html` capture modes**: reads `mode=pcm|speech` from the QR URL. PCM mode uses `AudioWorklet` to send 16 kHz i16 mono chunks over binary WS for local Whisper. Speech mode uses Web Speech and sends `{kind:"caption"}` JSON as fallback.
+
 - **`server/main.go`** — HTTP routing (`/healthz`, `/m`, `/ws/host`, `/ws/guest`), embeds `mobile.html` via `//go:embed`, graceful shutdown.
 - **`server/hub.go`** — session store. Generates 6-char IDs from a 30-char alphabet (no `0/O/1/I/L` confusion). Pairing model: host creates session on connect, guest joins via `?s=<id>`. Concurrent writes to the host conn (initial `session` msg + guest's status/relay) are serialized via `Session.WriteHost` (mutex-guarded). Binary and text frames pass through untouched. Max frame size 1 MiB.
-- **`server/mobile.html`** — the embedded phone UI. `MediaRecorder(opus)` 1.5s chunks → binary WS to `/ws/guest?s=<id>`. Includes silent-audio AudioContext loop + wake lock + visibility-restart to survive screen-off as best as a browser can.
+- **`server/mobile.html`** — the embedded phone UI. PCM mode captures 16 kHz i16 mono chunks with `AudioWorklet` and sends binary WS to `/ws/guest?s=<id>`; speech mode uses Web Speech and sends caption JSON as fallback. Includes silent-audio AudioContext loop + wake lock + visibility-restart to survive screen-off as best as a browser can.
 - **`server/hub_test.go`** — 10 unit tests covering ID generation, pairing, relay direction, second-guest rejection (1008), 404/400 routing, and host-disconnect cleanup. CI runs these with `-race` on Linux.
 
 ### CI/CD
@@ -79,7 +87,9 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 
 | Command (`#[tauri::command]`) | Returns | Notes |
 |---|---|---|
-| `mobile_url` | `String` | Cached URL or `""` until first session |
+| `mobile_url` | `String` | Cached URL or `""` until first session; includes `mode=pcm|speech` |
+| `whisper_model_path` | `Result<String, String>` | Expected `ggml-base.bin` path |
+| `whisper_status` | `String` | Cached local Whisper state |
 | `show_overlay` / `hide_overlay` / `close_overlay` / `reset_overlay_position` | `Result<&'static str, String>` | Overlay window controls |
 
 | Event (Rust → TS) | Payload | Trigger |
@@ -89,12 +99,14 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 | `caption-update` | `{ text, isFinal }` (camelCase) | Guest manual-text backup |
 | `audio-bytes` | `number` | Bytes in the latest binary chunk |
 | `relay-status` | `"connecting" \| "online" \| "reconnecting"` | WS client state transitions |
+| `whisper-status` | `"missing-model" \| "loading" \| "ready" \| "transcribing" \| "error"` | Local Whisper lifecycle |
 
 ## Conventions worth knowing
 
 - The phone-side JS in `mobile.html` sends `{kind: ...}` (camelCase); the relay metadata uses `{type: ...}`. Rust's `relay.rs` discriminates on which field is present.
 - Connection settings live in `localStorage` (`saveTranscript`, `speechEngine`). The old `connectionMode` field is silently ignored — no migration needed.
 - All Rust logs use `tracing` (`info!`, `warn!`). Filter via `RUST_LOG`.
+- Local Whisper builds through `whisper-rs-sys`, so Windows development needs CMake, MSVC Build Tools, and a visible `libclang` (for example MSYS2 clang with `LIBCLANG_PATH=C:\msys64\mingw64\bin`).
 - The mobile URL is always relay-hosted now. There is no LAN path, no self-signed cert, no `cloudflared`. If the user reports "AP isolation" or "self-signed warning" they're reading old docs.
 - UI copy is Spanish (Chilean: `es-CL`).
 - The relay's protocol is intentionally minimal: no auth, no rate limiting, no message inspection. Pairing happens purely via the 6-char session ID, which is ~729M combinations. Acceptable for MVP / teacher use; not for adversarial environments.

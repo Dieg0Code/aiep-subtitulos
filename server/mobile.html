@@ -364,6 +364,14 @@
           }
         } catch (e) {}
 
+        // The desktop app can force the safest capture mode for this session:
+        // PCM when local Whisper is ready, Web Speech when the model is missing.
+        const requestedMode = params.get("mode");
+        if (requestedMode === "pcm" || requestedMode === "speech") {
+          const target = document.querySelector(`input[name="capture-mode"][value="${requestedMode}"]`);
+          if (target) target.checked = true;
+        }
+
         // Persist choice + disable mid-capture switching (requires stop/start)
         document.querySelectorAll('input[name="capture-mode"]').forEach((radio) => {
           radio.addEventListener("change", () => {
