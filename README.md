@@ -10,7 +10,9 @@ Repositorio con dos componentes: **app de escritorio Tauri** (frontend + Rust) y
 
 La forma recomendada de usar la app es bajar el instalador desde la pagina de [Releases](https://github.com/Dieg0Code/aiep-subtitulos/releases/latest). Doble click al `.exe`, siguiente-siguiente-listo.
 
-**Primera vez**: Windows SmartScreen va a advertir "Windows protegio tu PC" porque el instalador no esta firmado (firmar cuesta dinero y este proyecto no tiene presupuesto). Haz click en **Mas informacion** -> **Ejecutar de todas formas**. Solo aparece la primera vez.
+**Primera vez / SmartScreen**: Windows puede mostrar "Windows protegio tu PC" porque el instalador no esta firmado digitalmente y la app aun tiene poca reputacion de descarga. En esa pantalla haz click en **Mas informacion** -> **Ejecutar de todas formas**. Esto es normal en proyectos piloto sin certificado de firma de codigo.
+
+Para eliminar esa advertencia de forma real habria que firmar el instalador con un certificado de code signing (idealmente EV para reputacion SmartScreen inmediata) o distribuir la app por una tienda/plataforma con confianza de Microsoft. No se puede desactivar desde el codigo de la app sin firmar el ejecutable.
 
 **Requisitos**: Windows 10/11 64-bit. WebView2 viene incluido en Windows 11 y en Windows 10 desde el April 2018 Update; si falta, el instalador lo descarga. Necesitas internet para el relay.
 
@@ -245,8 +247,7 @@ Whisper local corre en el PC y no sube audio a un proveedor de transcripcion. El
    git push origin app-v0.2.0
    ```
 
-4. El workflow `release` corre en GitHub Actions, compila el instalador NSIS y crea un **Release como draft** en GitHub con el `.exe` adjunto.
-5. Revisa el draft, edita el changelog si quieres, y publica. Quedara accesible en `/releases/latest`.
+4. El workflow `release` corre en GitHub Actions, compila el instalador NSIS y publica un Release en GitHub con el `.exe` adjunto. Quedara accesible en `/releases/latest`.
 
 La version del tag (sin el prefijo `app-v`) se patcha en `tauri.conf.json` + `package.json` dentro del runner, asi que no hace falta bumpear manualmente esos archivos. La fuente de verdad es el tag.
 
