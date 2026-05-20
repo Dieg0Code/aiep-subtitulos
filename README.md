@@ -29,6 +29,18 @@ El resto de este README es para desarrolladores. Si solo quieres usar la app, co
 - Permite mostrar, ocultar, cerrar, mover y reposicionar el overlay.
 - Guarda localmente un registro de lo transcrito y permite descargarlo como TXT.
 
+## Capturas
+
+Vista de escritorio con QR, motor Whisper local, bitacora y overlay flotante:
+
+![App de escritorio con overlay activo](postulacion-assets/desktop-overlay-transcribiendo.png)
+
+Vista del celular usado como microfono docente:
+
+| Captura detenida | Captura activa |
+|---|---|
+| ![Microfono docente antes de iniciar captura](postulacion-assets/movil-captura-detenida.jpeg) | ![Microfono docente durante captura](postulacion-assets/movil-captura-activa.jpeg) |
+
 ## Estado del MVP
 
 Esta version logra el flujo completo de captura, transporte y transcripcion local cuando el modelo esta instalado:
