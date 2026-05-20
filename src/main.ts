@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Captions,
   Download,
@@ -397,7 +396,12 @@ function renderOverlay(root: HTMLDivElement) {
         </label>
         <button id="close-overlay" class="icon-button" type="button" title="Cerrar overlay">X</button>
       </div>
-      <button class="drag-handle" id="drag-handle" type="button" title="Mover subtitulos">Mover</button>
+      <div class="move-pad" aria-label="Mover subtitulos">
+        <button type="button" data-move="up" title="Mover arriba">↑</button>
+        <button type="button" data-move="left" title="Mover izquierda">←</button>
+        <button type="button" data-move="down" title="Mover abajo">↓</button>
+        <button type="button" data-move="right" title="Mover derecha">→</button>
+      </div>
       <div class="subtitle-box" id="subtitle-box">Esperando subtitulos...</div>
     </section>
   `;
@@ -407,7 +411,6 @@ function renderOverlay(root: HTMLDivElement) {
   const pauseButton = document.querySelector<HTMLButtonElement>("#pause-toggle");
   const closeButton = document.querySelector<HTMLButtonElement>("#close-overlay");
   const fontSize = document.querySelector<HTMLInputElement>("#font-size");
-  const dragHandle = document.querySelector<HTMLButtonElement>("#drag-handle");
 
   pauseButton?.addEventListener("click", () => {
     paused = !paused;
@@ -419,18 +422,24 @@ function renderOverlay(root: HTMLDivElement) {
     if (subtitle) subtitle.style.fontSize = `${fontSize.value}px`;
   });
 
-  const startOverlayDrag = async (event: MouseEvent) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    try {
-      await getCurrentWindow().startDragging();
-    } catch (error) {
-      console.error("No se pudo mover el overlay", error);
-    }
+  const nudgeOverlay = async (dx: number, dy: number) => {
+    await invoke("nudge_overlay", { dx, dy });
   };
 
-  subtitle?.addEventListener("mousedown", startOverlayDrag);
-  dragHandle?.addEventListener("mousedown", startOverlayDrag);
+  document.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const step = 32;
+      const direction = button.dataset.move;
+      try {
+        if (direction === "up") await nudgeOverlay(0, -step);
+        if (direction === "down") await nudgeOverlay(0, step);
+        if (direction === "left") await nudgeOverlay(-step, 0);
+        if (direction === "right") await nudgeOverlay(step, 0);
+      } catch (error) {
+        console.error("No se pudo mover el overlay", error);
+      }
+    });
+  });
 
   closeButton?.addEventListener("click", () => {
     invoke("close_overlay");
