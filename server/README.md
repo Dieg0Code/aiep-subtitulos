@@ -55,6 +55,14 @@ railway domain --service aiep-relay
 
 URL pública actual: `https://aiep-relay-production.up.railway.app`.
 
+Despues de cada despliegue, valida que la vista movil responda con la UI actual:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing "https://aiep-relay-production.up.railway.app/m?s=TEST&mode=pcm"
+```
+
+La seccion "Motor de captura" debe mostrar que el modo lo define el PC docente, sin selector manual en el celular.
+
 ### Auto-deploy con GitHub (recomendado)
 
 1. Railway dashboard → proyecto `aiep-subtitulos-relay` → service `aiep-relay` → **Settings → Source**.
