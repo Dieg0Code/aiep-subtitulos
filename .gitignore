@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Android
+mobile-android/
+**/.gradle/
+**/build/
+**/local.properties
+*.apk
+
+# Local proposal build/output artifacts
+BASES CONCURSO INNOVACIÓN DOCENTE 2026.pdf
+postulacion-output/
+*-preview/
+*-preview-img/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

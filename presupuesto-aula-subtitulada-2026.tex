@@ -1,0 +1,171 @@
+\documentclass[10pt,letterpaper]{article}
+
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[letterpaper,top=1.55cm,bottom=1.55cm,left=1.65cm,right=1.65cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{multicol}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{SoftGray}{HTML}{F3F4F6}
+\definecolor{RuleGray}{HTML}{D6DADF}
+\definecolor{TextGray}{HTML}{444444}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlist[itemize]{leftmargin=1.15em,itemsep=0.16em,topsep=0.12em}
+\renewcommand{\arraystretch}{1.18}
+\pagestyle{empty}
+\raggedbottom
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}p{2.15cm}}
+
+\newcommand{\sectiontitle}[1]{%
+  \vspace{0.55em}%
+  {\bfseries\large #1}\par
+  \vspace{0.12em}%
+}
+
+\newcommand{\money}[1]{\$#1}
+
+\begin{document}
+
+{\LARGE\bfseries Presupuesto referencial}\\[-0.15em]
+{\normalsize Aula Subtitulada AIEP | Concurso Innovación Docente 2026}\\[-0.1em]
+{\small Línea propuesta: Innovación en el Aula | Monto máximo: \money{1.000.000}}
+
+\vspace{0.35em}
+{\color{RuleGray}\rule{\textwidth}{0.6pt}}
+
+\sectiontitle{Criterio general}
+
+El presupuesto se formula para financiar una implementación piloto seria, medible y replicable de \textbf{Aula Subtitulada AIEP}. La prioridad es asegurar audio docente estable, mejora técnica del prototipo, evaluación pedagógica y generación de material transferible para la sede. Los valores son referenciales, levantados desde tiendas en línea consultadas el \textbf{20 de mayo de 2026}; antes de comprar se recomienda solicitar cotización formal y verificar stock.
+
+\begin{center}
+\rowcolors{2}{SoftGray}{white}
+\begin{tabularx}{\textwidth}{>{\bfseries}p{4.1cm}Y R}
+\toprule
+Categoría & Propósito & Monto \\
+\midrule
+Mejoras tecnológicas, seguridad y despliegue & Costos externos para dejar el prototipo instalable, confiable y usable en piloto: firma de instalador, servicios cloud, pruebas, empaquetado y soporte técnico documentado & \money{450.000} \\
+Kit de audio e implementación en aula & Micrófono inalámbrico de solapa, respaldo de captura, adaptadores y soporte físico para pruebas & \money{250.000} \\
+Respaldo, portabilidad y resguardo de evidencias & SSD/pendrives para respaldar instaladores, evidencias anonimizadas, guías y material de transferencia & \money{100.000} \\
+Materiales de implementación y evaluación & Encuestas, pautas, consentimientos si aplica, hojas de observación, señalética QR y material de trabajo & \money{60.000} \\
+Diseño y diagramación de guía de replicabilidad & Documento final para transferencia a otras asignaturas, docentes o sedes & \money{90.000} \\
+Socialización y retroalimentación & Insumos acotados para sesión de cierre, difusión interna y levantamiento de retroalimentación & \money{50.000} \\
+\midrule
+\multicolumn{2}{r}{\bfseries Total solicitado} & \bfseries \money{1.000.000} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\sectiontitle{Desglose de la partida tecnológica}
+
+La partida de \textbf{\money{450.000}} no corresponde a pago personal del postulante. Se reserva para gastos externos y rendibles que permitan que el prototipo pase de MVP a piloto institucional:
+
+\begin{itemize}
+  \item Certificado o firma de código para reducir advertencias de seguridad del instalador en Windows.
+  \item Dominio, relay o servicios cloud acotados para conectar celular y computador durante el piloto.
+  \item Empaquetado, pruebas de instalación, soporte técnico documentado y ajustes de estabilidad.
+  \item Registro autorizado de transcripciones y preparación de funciones para generar resúmenes, glosarios, fichas o infografías.
+\end{itemize}
+
+\textbf{Resguardo administrativo:} estos gastos deben ejecutarse mediante compras, proveedores o mecanismos autorizados por AIEP. Si alguna subpartida no fuese rendible, se debe reasignar a equipamiento, evaluación, producción de guía u otros gastos permitidos.
+
+\sectiontitle{Detalle por categoría}
+
+\begin{tabularx}{\textwidth}{p{3.55cm}Y R}
+\toprule
+\textbf{Ítem} & \textbf{Justificación} & \textbf{Monto} \\
+\midrule
+Mejoras tecnológicas, seguridad y despliegue & Partida destinada exclusivamente a gastos externos y rendibles para pasar del MVP a un piloto institucional: certificado/firma de código para disminuir advertencias de seguridad del instalador en Windows; dominio, relay o servicios cloud acotados para conexión celular-PC; empaquetado y pruebas de instalador; ajustes técnicos de estabilidad; registro autorizado de transcripciones; limpieza de texto y preparación de la función que genere resúmenes, glosarios, fichas o infografías. \textbf{No corresponde a pago, honorario ni incentivo personal para el responsable del proyecto}. Si una compra específica no fuese aceptada por bases o administración, el monto deberá reasignarse a proveedores, licencias, servicios técnicos o equipamiento autorizado. & \money{450.000} \\
+\addlinespace
+Kit de audio docente & Compra de micrófono inalámbrico de solapa/clip para mejorar la captura de voz en aula. Referencia principal: DJI Mic Mini 1TX+1RX, publicado en Ripley a \money{99.990}. Se deja holgura para envío, disponibilidad, alternativa equivalente o cambio a equipo de mayor estándar si compras institucionales lo exigen. & \money{130.000} \\
+\addlinespace
+Micrófono de respaldo USB-C & Micrófono de escritorio o respaldo para pruebas controladas, validación técnica y comparación de calidad de captura. Referencia: UGREEN micrófono condensador USB-C con soporte, \money{49.990} en Casa Royal. & \money{55.000} \\
+\addlinespace
+Adaptadores, soporte y accesorios & Adaptador USB-C a 3,5 mm, soporte/trípode simple para celular, cables, protectores, clips y organizadores para operar el piloto sin depender de accesorios personales del docente. Referencias: UGREEN USB-C a 3,5 mm \money{12.990}; trípodes/soportes desde \money{8.990}--\money{12.990}. & \money{65.000} \\
+\addlinespace
+Almacenamiento y respaldo & SSD externo para respaldo del piloto y evidencias anonimizadas; pendrives para instalador, guía y transferencia. Referencias: SSD Seagate Expansion 500GB \money{79.650}; pendrive Kingston 64GB desde \money{8.990}. & \money{100.000} \\
+\addlinespace
+Materiales de evaluación & Impresiones de instrumentos, pautas de observación, encuestas breves, hojas de consentimiento si corresponde, fichas de uso, etiquetas QR y material para sesiones piloto. & \money{60.000} \\
+\addlinespace
+Guía de replicabilidad & Diseño/diagramación de una guía breve con flujo de instalación, uso pedagógico, resguardos de privacidad, recomendaciones de aula e indicadores de evaluación. & \money{90.000} \\
+\addlinespace
+Socialización & Material de difusión interna y sesión de retroalimentación con docentes/estudiantes. Se mantiene acotado y bajo el 20\% del presupuesto total. & \money{50.000} \\
+\midrule
+\multicolumn{2}{r}{\bfseries Total} & \bfseries \money{1.000.000} \\
+\bottomrule
+\end{tabularx}
+
+\newpage
+
+{\LARGE\bfseries Presupuesto referencial}\\[-0.15em]
+{\normalsize Aula Subtitulada AIEP | Respaldo de precios y pertinencia}
+
+\vspace{0.35em}
+{\color{RuleGray}\rule{\textwidth}{0.6pt}}
+
+\sectiontitle{Referencias de precios consultadas}
+
+\begin{tabularx}{\textwidth}{p{4.2cm}Y R}
+\toprule
+\textbf{Referencia} & \textbf{Uso en el presupuesto} & \textbf{Precio visto} \\
+\midrule
+DJI Mic Mini 1TX+1RX, Ripley & Micrófono inalámbrico de solapa/clip para docente. Producto incluye transmisor, receptor, adaptador USB-C, cables y accesorios; la ficha declara transmisor de 10 g y uso fijado a la ropa. & \money{99.990} \\
+Rode Wireless ME, Gearhub & Alternativa de mayor estándar para micrófono inalámbrico, con transmisor/receptor, cables y accesorios incluidos. Sirve como referencia si compras institucionales prefieren marca de audio profesional. & \money{175.890} \\
+UGREEN USB-C a 3,5 mm, Casa Royal & Adaptador para compatibilidad de audio y pruebas con distintos celulares/notebooks. & \money{12.990} \\
+UGREEN micrófono condensador USB-C, Casa Royal & Respaldo de captura para pruebas controladas o escenarios de escritorio. & \money{49.990} \\
+SSD externo Seagate Expansion 500GB, LifeMax & Respaldo de evidencias anonimizadas, instaladores y material de transferencia. & \money{79.650} \\
+Pendrive Kingston 64GB, Falabella & Medio simple de transferencia de instalador, guía y recursos para docentes. & desde \money{8.990} \\
+Soportes/trípodes para celular, Falabella & Fijación del celular durante pruebas o demostraciones sin depender de que el docente lo sostenga. & desde \money{8.990} \\
+\bottomrule
+\end{tabularx}
+
+\sectiontitle{Por qué no gastar todo en equipamiento}
+
+La propuesta no es solo una compra de micrófono. El valor del proyecto depende de integrar tecnología, metodología y evidencia:
+
+\begin{itemize}
+  \item \textbf{Audio estable:} sin buena captura, el subtitulado pierde precisión; por eso se prioriza un kit de micrófono y respaldo.
+  \item \textbf{Mejora técnica:} el piloto requiere estabilidad, registro autorizado y preparación para generar material complementario.
+  \item \textbf{Evidencia pedagógica:} se deben aplicar instrumentos simples para medir utilidad, claridad y participación.
+  \item \textbf{Transferencia:} la guía de replicabilidad permite que la innovación no quede limitada a una clase o docente.
+\end{itemize}
+
+\sectiontitle{Resguardos administrativos}
+
+\begin{itemize}
+  \item Los precios pueden cambiar por stock, despacho, proveedor institucional o facturación.
+  \item Se recomienda solicitar cotizaciones formales antes de ejecutar la compra.
+  \item El ítem de mejoras tecnológicas, seguridad y despliegue debe ejecutarse conforme a las bases y normas internas de AIEP. Puede materializarse como certificado/firma de código, licencias, servicios cloud, soporte técnico, empaquetado, pruebas o proveedor autorizado; no como pago personal al responsable.
+  \item Si alguna subpartida no fuese rendible o autorizada, se deberá redistribuir hacia equipamiento, evaluación, producción de guía u otros gastos permitidos por la institución.
+  \item El gasto en socialización se mantiene en \money{50.000}, equivalente al 5\% del presupuesto, por debajo del límite prudente de 20\% para difusión/coffee break.
+\end{itemize}
+
+\sectiontitle{Trazabilidad}
+
+Las referencias de precio corresponden a productos publicados en Ripley, Gearhub, Casa Royal, LifeMax y Falabella, consultados en línea el 20 de mayo de 2026. Para ejecución presupuestaria se recomienda adjuntar cotizaciones formales actualizadas y capturas de respaldo al momento de compra.
+
+% Enlaces usados para la verificación de precios:
+% DJI Mic Mini 1TX+1RX, Ripley:
+% https://simple.ripley.cl/dji-mic-mini-1-tx-1-rx-or-1-microfono-y-base-de-carga-mpm10003240869
+% Rode Wireless ME, Gearhub:
+% https://gearhub.cl/collections/productos-nuevos-de-gearhub/products/rode-wireless-me-microfono-inalambrico-portatil
+% UGREEN USB-C a 3,5 mm, Casa Royal:
+% https://www.casaroyal.cl/-ugreen-adaptador-de-audio-tipo-c-macho-a-3-5-mm/p
+% UGREEN micrófono condensador USB-C, Casa Royal:
+% https://www.casaroyal.cl/ugreen-microfono-condensador-usb-c-con-soporte-de-escritorio-24bit-96khz-cm769/p
+% SSD Seagate Expansion 500GB, LifeMax:
+% https://lifemaxdistribuidora.cl/products/disco-externo-ssd-seagate-expansion-500gb-stjd500400
+% Pendrive Kingston 64GB, Falabella:
+% https://www.falabella.com/falabella-cl/shop/pendrive-64gb
+% Soportes/trípodes de celular, Falabella:
+% https://www.falabella.com/falabella-cl/shop/aro-de-luz
+
+\end{document}
