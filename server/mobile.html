@@ -213,18 +213,6 @@
         flex-direction: column;
         gap: 10px;
       }
-      .capture-mode label {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 8px 0;
-        cursor: pointer;
-      }
-      .capture-mode input[type="radio"] {
-        margin-top: 4px;
-        accent-color: var(--aiep-red);
-        flex-shrink: 0;
-      }
       .capture-mode strong {
         display: block;
         color: var(--ink);
@@ -288,20 +276,8 @@
       <details>
         <summary>Motor de captura</summary>
         <div class="capture-mode">
-          <label>
-            <input type="radio" name="capture-mode" value="speech" checked />
-            <span>
-              <strong>Reconocimiento web (recomendado)</strong>
-              <small>Subtitulos inmediatos en el PC. Requiere Chrome Android y pantalla activa.</small>
-            </span>
-          </label>
-          <label>
-            <input type="radio" name="capture-mode" value="pcm" />
-            <span>
-              <strong>Streaming PCM al PC (experimental)</strong>
-              <small>Manda audio crudo para el motor del PC (Whisper / OpenAI). Aun no hay motor instalado, sin subtitulos hasta proxima version.</small>
-            </span>
-          </label>
+          <strong id="capture-mode-title">Definido por el PC docente</strong>
+          <small id="capture-mode-description">La app del PC elige automaticamente el modo correcto segun el estado de Whisper local.</small>
         </div>
       </details>
 
@@ -348,43 +324,26 @@
         const TARGET_SAMPLE_RATE = 16000;
         const BATCH_SAMPLES = 1600; // ~100ms at 16kHz
         const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const CAPTURE_MODE_KEY = "aiep-capture-mode";
+        const requestedMode = params.get("mode") === "pcm" ? "pcm" : "speech";
+        const captureModeTitle = document.querySelector("#capture-mode-title");
+        const captureModeDescription = document.querySelector("#capture-mode-description");
 
-        const getCaptureMode = () => {
-          const checked = document.querySelector("input[name=\"capture-mode\"]:checked");
-          return checked ? checked.value : "speech";
-        };
-
-        // Restore last choice from localStorage
-        try {
-          const saved = localStorage.getItem(CAPTURE_MODE_KEY);
-          if (saved === "pcm" || saved === "speech") {
-            const target = document.querySelector(`input[name="capture-mode"][value="${saved}"]`);
-            if (target) target.checked = true;
+        const setModeCopy = () => {
+          if (requestedMode === "pcm") {
+            captureModeTitle.textContent = "Whisper local en el PC";
+            captureModeDescription.textContent = "El celular envia audio al computador. La transcripcion se realiza en la app del PC docente.";
+          } else {
+            captureModeTitle.textContent = "Modo respaldo del celular";
+            captureModeDescription.textContent = "Whisper local aun no esta listo en el PC. Mientras tanto, el celular usa reconocimiento web como respaldo.";
           }
-        } catch (e) {}
+        };
+        setModeCopy();
 
-        // The desktop app can force the safest capture mode for this session:
-        // PCM when local Whisper is ready, Web Speech when the model is missing.
-        const requestedMode = params.get("mode");
-        if (requestedMode === "pcm" || requestedMode === "speech") {
-          const target = document.querySelector(`input[name="capture-mode"][value="${requestedMode}"]`);
-          if (target) target.checked = true;
-        }
+        const getCaptureMode = () => requestedMode;
 
-        // Persist choice + disable mid-capture switching (requires stop/start)
-        document.querySelectorAll('input[name="capture-mode"]').forEach((radio) => {
-          radio.addEventListener("change", () => {
-            try { localStorage.setItem(CAPTURE_MODE_KEY, radio.value); } catch (e) {}
-          });
-        });
-
-        // If Web Speech isn't supported, force PCM and disable the radio
-        if (!SpeechRecognitionCtor) {
-          const speechRadio = document.querySelector("input[name=\"capture-mode\"][value=\"speech\"]");
-          const pcmRadio = document.querySelector("input[name=\"capture-mode\"][value=\"pcm\"]");
-          if (speechRadio) speechRadio.disabled = true;
-          if (pcmRadio) pcmRadio.checked = true;
+        if (!SpeechRecognitionCtor && requestedMode === "speech") {
+          setStatus("offline", "Este navegador no soporta el modo respaldo. Pidele al docente que espere Whisper local en el PC y reescanee el QR.");
+          button.disabled = true;
         }
 
         let socket = null;
@@ -840,7 +799,7 @@
           if (!listening) {
             listening = true;
             chunksSent = 0;
-            setTranscript("Enviando audio al PC...", false);
+            setTranscript(requestedMode === "pcm" ? "Enviando audio al PC..." : "Escuchando...", false);
             button.classList.add("listening");
             toggleLabel.textContent = "Detener captura";
             await requestWakeLock();

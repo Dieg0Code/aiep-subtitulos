@@ -70,11 +70,11 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 
 ### Go relay (`server/`)
 
-- **`server/mobile.html` capture modes**: reads `mode=pcm|speech` from the QR URL. PCM mode uses `AudioWorklet` to send 16 kHz i16 mono chunks over binary WS for local Whisper. Speech mode uses Web Speech and sends `{kind:"caption"}` JSON as fallback.
+- **`server/mobile.html` capture modes**: reads `mode=pcm|speech` from the QR URL and treats the PC as the source of truth. The phone UI no longer exposes a manual mode switch. PCM mode uses `AudioWorklet` to send 16 kHz i16 mono chunks over binary WS for local Whisper. Speech mode uses Web Speech and sends `{kind:"caption"}` JSON as fallback while Whisper is unavailable.
 
 - **`server/main.go`** — HTTP routing (`/healthz`, `/m`, `/ws/host`, `/ws/guest`), embeds `mobile.html` via `//go:embed`, graceful shutdown.
 - **`server/hub.go`** — session store. Generates 6-char IDs from a 30-char alphabet (no `0/O/1/I/L` confusion). Pairing model: host creates session on connect, guest joins via `?s=<id>`. Concurrent writes to the host conn (initial `session` msg + guest's status/relay) are serialized via `Session.WriteHost` (mutex-guarded). Binary and text frames pass through untouched. Max frame size 1 MiB.
-- **`server/mobile.html`** — the embedded phone UI. PCM mode captures 16 kHz i16 mono chunks with `AudioWorklet` and sends binary WS to `/ws/guest?s=<id>`; speech mode uses Web Speech and sends caption JSON as fallback. Includes silent-audio AudioContext loop + wake lock + visibility-restart to survive screen-off as best as a browser can.
+- **`server/mobile.html`** — the embedded phone UI. The PC selects `mode=pcm|speech` in the QR URL; the phone only displays which mode is active. PCM mode captures 16 kHz i16 mono chunks with `AudioWorklet` and sends binary WS to `/ws/guest?s=<id>`; speech mode uses Web Speech and sends caption JSON as fallback. Includes silent-audio AudioContext loop + wake lock + visibility-restart to survive screen-off as best as a browser can.
 - **`server/hub_test.go`** — 10 unit tests covering ID generation, pairing, relay direction, second-guest rejection (1008), 404/400 routing, and host-disconnect cleanup. CI runs these with `-race` on Linux.
 
 ### CI/CD
