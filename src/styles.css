@@ -648,19 +648,20 @@ button.btn-ghost:hover {
   font-weight: 800;
 }
 
-.move-pad {
+.drag-handle {
   position: absolute;
   right: 18px;
   bottom: 18px;
   z-index: 3;
-  display: grid;
-  grid-template-columns: repeat(3, 30px);
-  grid-template-rows: repeat(2, 30px);
-  gap: 4px;
+  min-width: 74px;
+  height: 34px;
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  padding: 5px;
+  border-radius: 999px;
   background: rgba(23, 32, 38, 0.72);
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: move;
   opacity: 0.72;
   transition:
     opacity 160ms ease,
@@ -668,46 +669,13 @@ button.btn-ghost:hover {
   user-select: none;
 }
 
-.move-pad button {
-  width: 30px;
-  height: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.12);
-  color: white;
-  font-size: 1rem;
-  font-weight: 950;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.move-pad button[data-move="up"] {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.move-pad button[data-move="left"] {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.move-pad button[data-move="down"] {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.move-pad button[data-move="right"] {
-  grid-column: 3;
-  grid-row: 2;
-}
-
-.overlay-shell:hover .move-pad,
-.move-pad:hover,
-.paused .move-pad {
+.overlay-shell:hover .drag-handle,
+.drag-handle:hover,
+.paused .drag-handle {
   opacity: 0.96;
 }
 
-.move-pad:hover {
+.drag-handle:hover {
   background: rgba(0, 59, 112, 0.88);
 }
 

@@ -396,13 +396,8 @@ function renderOverlay(root: HTMLDivElement) {
         </label>
         <button id="close-overlay" class="icon-button" type="button" title="Cerrar overlay">X</button>
       </div>
-      <div class="move-pad" aria-label="Mover subtitulos">
-        <button type="button" data-move="up" title="Mover arriba">↑</button>
-        <button type="button" data-move="left" title="Mover izquierda">←</button>
-        <button type="button" data-move="down" title="Mover abajo">↓</button>
-        <button type="button" data-move="right" title="Mover derecha">→</button>
-      </div>
-      <div class="subtitle-box" id="subtitle-box">Esperando subtitulos...</div>
+      <button class="drag-handle" type="button" title="Arrastra para mover" data-tauri-drag-region>Mover</button>
+      <div class="subtitle-box" id="subtitle-box" data-tauri-drag-region>Esperando subtitulos...</div>
     </section>
   `;
 
@@ -420,25 +415,6 @@ function renderOverlay(root: HTMLDivElement) {
 
   fontSize?.addEventListener("input", () => {
     if (subtitle) subtitle.style.fontSize = `${fontSize.value}px`;
-  });
-
-  const nudgeOverlay = async (dx: number, dy: number) => {
-    await invoke("nudge_overlay", { dx, dy });
-  };
-
-  document.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const step = 32;
-      const direction = button.dataset.move;
-      try {
-        if (direction === "up") await nudgeOverlay(0, -step);
-        if (direction === "down") await nudgeOverlay(0, step);
-        if (direction === "left") await nudgeOverlay(-step, 0);
-        if (direction === "right") await nudgeOverlay(step, 0);
-      } catch (error) {
-        console.error("No se pudo mover el overlay", error);
-      }
-    });
   });
 
   closeButton?.addEventListener("click", () => {

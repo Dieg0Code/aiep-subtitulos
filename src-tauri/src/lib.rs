@@ -57,19 +57,6 @@ fn reset_overlay_position(app: AppHandle) -> Result<&'static str, String> {
     Ok("Overlay reposicionado")
 }
 
-#[tauri::command]
-fn nudge_overlay(app: AppHandle, dx: i32, dy: i32) -> Result<&'static str, String> {
-    let overlay = ensure_overlay(&app)?;
-    let position = overlay.outer_position().map_err(|error| error.to_string())?;
-    overlay
-        .set_position(Position::Physical(PhysicalPosition {
-            x: position.x.saturating_add(dx),
-            y: position.y.saturating_add(dy),
-        }))
-        .map_err(|error| error.to_string())?;
-    Ok("Overlay movido")
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = tracing_subscriber::fmt()
@@ -127,7 +114,6 @@ pub fn run() {
             show_overlay,
             hide_overlay,
             reset_overlay_position,
-            nudge_overlay,
             whisper_model_path,
             whisper_status
         ])
