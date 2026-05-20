@@ -602,7 +602,7 @@ button.btn-ghost:hover {
   position: absolute;
   top: 0;
   left: 50%;
-  z-index: 2;
+  z-index: 3;
   transform: translateX(-50%);
   display: flex;
   width: fit-content;
@@ -646,6 +646,37 @@ button.btn-ghost:hover {
   gap: 8px;
   font-size: 0.86rem;
   font-weight: 800;
+}
+
+.drag-handle {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 3;
+  min-width: 68px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(23, 32, 38, 0.72);
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: move;
+  opacity: 0.72;
+  transition:
+    opacity 160ms ease,
+    background 160ms ease;
+  user-select: none;
+}
+
+.overlay-shell:hover .drag-handle,
+.drag-handle:hover,
+.paused .drag-handle {
+  opacity: 0.96;
+}
+
+.drag-handle:hover {
+  background: rgba(0, 59, 112, 0.88);
 }
 
 .subtitle-box {

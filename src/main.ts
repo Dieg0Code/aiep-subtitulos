@@ -397,7 +397,8 @@ function renderOverlay(root: HTMLDivElement) {
         </label>
         <button id="close-overlay" class="icon-button" type="button" title="Cerrar overlay">X</button>
       </div>
-      <div class="subtitle-box" id="subtitle-box" data-tauri-drag-region>Esperando subtitulos...</div>
+      <button class="drag-handle" id="drag-handle" type="button" title="Mover subtitulos">Mover</button>
+      <div class="subtitle-box" id="subtitle-box">Esperando subtitulos...</div>
     </section>
   `;
 
@@ -406,6 +407,7 @@ function renderOverlay(root: HTMLDivElement) {
   const pauseButton = document.querySelector<HTMLButtonElement>("#pause-toggle");
   const closeButton = document.querySelector<HTMLButtonElement>("#close-overlay");
   const fontSize = document.querySelector<HTMLInputElement>("#font-size");
+  const dragHandle = document.querySelector<HTMLButtonElement>("#drag-handle");
 
   pauseButton?.addEventListener("click", () => {
     paused = !paused;
@@ -417,14 +419,18 @@ function renderOverlay(root: HTMLDivElement) {
     if (subtitle) subtitle.style.fontSize = `${fontSize.value}px`;
   });
 
-  subtitle?.addEventListener("pointerdown", async (event) => {
+  const startOverlayDrag = async (event: MouseEvent) => {
     if (event.button !== 0) return;
+    event.preventDefault();
     try {
       await getCurrentWindow().startDragging();
     } catch (error) {
       console.error("No se pudo mover el overlay", error);
     }
-  });
+  };
+
+  subtitle?.addEventListener("mousedown", startOverlayDrag);
+  dragHandle?.addEventListener("mousedown", startOverlayDrag);
 
   closeButton?.addEventListener("click", () => {
     invoke("close_overlay");
