@@ -1,0 +1,453 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+
+\geometry{left=2.2cm,right=2.2cm,top=2.3cm,bottom=2.4cm}
+\definecolor{AiepBlue}{HTML}{123C69}
+\definecolor{AiepCyan}{HTML}{00A3B4}
+\definecolor{SoftGray}{HTML}{F3F6F8}
+\definecolor{TextGray}{HTML}{334155}
+\definecolor{PendingRed}{HTML}{B91C1C}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=AiepBlue,
+  urlcolor=AiepBlue,
+  pdftitle={Aula Subtitulada AIEP - Postulacion Innovacion Docente 2026},
+  pdfauthor={Diego Matias Obando Aguilera}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\textcolor{AiepBlue}{Aula Subtitulada AIEP}}
+\rhead{\textcolor{TextGray}{Innovación en el Aula 2026}}
+\cfoot{\textcolor{TextGray}{Página \thepage\ de \pageref{LastPage}}}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}
+  {\Large\bfseries\color{AiepBlue}}
+  {\thesection}{0.7em}{}
+\titleformat{\subsection}
+  {\large\bfseries\color{TextGray}}
+  {\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.35em}
+
+\setlist[itemize]{leftmargin=1.2em,itemsep=0.2em,topsep=0.3em}
+\setlist[enumerate]{leftmargin=1.3em,itemsep=0.25em,topsep=0.3em}
+\renewcommand{\arraystretch}{1.25}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.65em}
+
+\newcommand{\pending}[1]{\textcolor{PendingRed}{\textbf{[PENDIENTE: #1]}}}
+\newcommand{\chip}[1]{\fcolorbox{AiepCyan}{SoftGray}{\strut\hspace{0.4em}#1\hspace{0.4em}}}
+\newcommand{\imgdesktopa}{postulacion-assets/desktop-overlay-esperando.png}
+\newcommand{\imgdesktopb}{postulacion-assets/desktop-overlay-transcribiendo.png}
+\newcommand{\imgphonea}{postulacion-assets/movil-captura-detenida.jpeg}
+\newcommand{\imgphoneb}{postulacion-assets/movil-captura-activa.jpeg}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{1.2cm}
+  {\Large\textcolor{TextGray}{Concurso Innovación Docente 2026}\par}
+  \vspace{0.3cm}
+  {\large\textcolor{AiepBlue}{Línea de acción: Innovación en el Aula}\par}
+  \vspace{1.8cm}
+  {\Huge\bfseries\textcolor{AiepBlue}{Aula Subtitulada AIEP}\par}
+  \vspace{0.35cm}
+  {\Large\textcolor{TextGray}{Subtítulos flotantes en tiempo real para clases inclusivas}\par}
+  \vspace{1.4cm}
+  \begin{tabular}{>{\bfseries}p{5.4cm}p{8.2cm}}
+    Responsable & Diego Matías Obando Aguilera \\
+    Rol & Líder del proyecto y desarrollador del prototipo funcional \\
+    Impulsor institucional & Elias Alberto Silva Carrasco \\
+    Cargo & Jefe Escuela Ingeniería, Energía y Tecnología, sede Osorno \\
+    Sede & Osorno \\
+    Escuela & Ingeniería, Energía y Tecnología \\
+    Asignatura de origen & PRO301 Taller de Aplicaciones para Internet \\
+    Estrategia de admisibilidad & Incorporar una sección o docente complementario para alcanzar al menos 15 estudiantes participantes \\
+  \end{tabular}
+  \vfill
+  {\large Mayo 2026\par}
+  \vspace{0.3cm}
+  {\small Documento de trabajo para revisión de jefatura y carga de información en plataforma Charly.io.}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Resumen Ejecutivo}
+
+\textbf{Aula Subtitulada AIEP} propone implementar y validar una metodología inclusiva de subtitulado en tiempo real para clases, apoyada por una aplicación de escritorio desarrollada por el docente postulante. La herramienta permite que la voz del docente se transforme en subtítulos flotantes visibles sobre cualquier presentación, navegador o software utilizado durante la clase.
+
+La iniciativa surge a partir de una inquietud planteada por \textbf{Elias Alberto Silva Carrasco}, Jefe Escuela Ingeniería, Energía y Tecnología de sede Osorno y jefe directo del postulante, quien identificó la oportunidad de crear una herramienta que permitiera traducir o subtitular lo hablado por docentes para apoyar a estudiantes con barreras auditivas. A partir de esa orientación, \textbf{Diego Matías Obando Aguilera} lideró el diseño y desarrollo de un prototipo funcional, y propone ahora su implementación pedagógica en aula durante el segundo semestre de 2026.
+
+El proyecto no se presenta únicamente como una aplicación tecnológica, sino como una estrategia de aula con diagnóstico, implementación guiada, evaluación de percepción estudiantil, ajustes del prototipo y elaboración de una guía de replicabilidad para otros docentes AIEP. Su foco principal es la accesibilidad: la inteligencia artificial y la transcripción automática se entienden como medios técnicos al servicio de una experiencia formativa más inclusiva.
+
+Como proyección del prototipo, la transcripción autorizada de la clase podrá transformarse en material complementario para el aprendizaje, tales como resúmenes, guías breves, glosarios, infografías o fichas de repaso. Esta segunda capa permitirá que la explicación oral del docente no solo sea accesible durante la clase, sino también reutilizable como apoyo posterior para estudiantes que necesiten reforzar contenidos.
+
+\begin{center}
+\begin{tabularx}{0.95\textwidth}{>{\bfseries}p{4cm}X}
+\toprule
+Línea recomendada & Innovación en el Aula \\
+Problema central & Barreras de acceso a explicaciones e instrucciones orales durante la clase \\
+Solución propuesta & Subtítulos flotantes en tiempo real visibles sobre los recursos de enseñanza y generación posterior de material complementario desde la transcripción autorizada \\
+Asignatura de origen & PRO301 Taller de Aplicaciones para Internet \\
+Requisito crítico & Incorporar al menos 15 estudiantes participantes \\
+Estado actual & Prototipo funcional desarrollado; falta definir sección complementaria y carta de apoyo \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{\detokenize\expandafter{\imgdesktopb}}
+  \caption{Vista de la aplicación de escritorio con código QR, estado del motor Whisper local, bitácora y subtítulos flotantes activos sobre la clase.}
+\end{figure}
+
+\section{Origen de la Iniciativa}
+
+La idea inicial fue impulsada por Don Elías Alberto Silva Carrasco, Jefe Escuela Ingeniería, Energía y Tecnología de sede Osorno, quien planteó la posibilidad de crear un instrumento o asistente capaz de traducir o subtitular lo que el docente habla durante sus clases, con especial atención a estudiantes con problemas auditivos.
+
+Desde esa necesidad institucional, Diego Matías Obando Aguilera asumió el desafío de diseñar y construir un prototipo funcional. La solución desarrollada permite utilizar el celular del docente como micrófono, conectar el teléfono con el computador mediante un código QR y mostrar subtítulos flotantes sobre cualquier recurso de enseñanza utilizado en pantalla.
+
+Esta articulación entre visión de escuela y capacidad técnica docente fortalece la propuesta: la necesidad nace desde la conducción académica y se transforma en un prototipo aplicable al aula, con potencial de validarse, mejorarse y replicarse en otras asignaturas de la institución.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=1.5cm,
+  box/.style={rectangle, rounded corners=3pt, draw=AiepBlue, fill=SoftGray, very thick, align=center, minimum height=1.1cm, text width=3.2cm},
+  arrow/.style={-{Latex[length=3mm]}, very thick, color=AiepBlue}
+]
+\node[box] (idea) {Necesidad detectada\\por jefatura};
+\node[box, right=of idea] (proto) {Prototipo funcional\\desarrollado por docente};
+\node[box, right=of proto] (aula) {Validación\\en aula};
+\node[box, below=of proto] (transfer) {Guía de replicabilidad\\para otros docentes};
+\draw[arrow] (idea) -- (proto);
+\draw[arrow] (proto) -- (aula);
+\draw[arrow] (aula) |- (transfer);
+\draw[arrow] (transfer) -| (idea);
+\end{tikzpicture}
+\caption{Lógica de la propuesta: una inquietud institucional se transforma en prototipo, validación pedagógica y transferencia.}
+\end{figure}
+
+\section{Problemática}
+
+En clases presenciales, híbridas o mediadas por tecnología, una parte sustantiva de la transferencia de conocimiento ocurre por vía oral: explicaciones del docente, instrucciones para actividades, ejemplos espontáneos, correcciones, advertencias, síntesis de contenidos y retroalimentación inmediata. Cuando esa información no queda visible, se generan barreras para estudiantes que no alcanzan a escuchar con claridad, requieren más tiempo para procesar instrucciones, presentan dificultades atencionales, están ubicados lejos del docente o están aprendiendo vocabulario técnico propio de la disciplina.
+
+La problemática no depende exclusivamente de contar con estudiantes sordos o con diagnóstico formal. Desde una perspectiva de Diseño Universal para el Aprendizaje, cualquier estudiante puede experimentar barreras temporales o permanentes para acceder al contenido oral de una clase. Una sala ruidosa, una instrucción compleja, una explicación rápida, una conexión híbrida inestable o una diferencia en el dominio del lenguaje técnico pueden afectar la comprensión y participación.
+
+En asignaturas técnicas, como \textbf{PRO301 Taller de Aplicaciones para Internet}, perder una instrucción oral puede impactar directamente en la ejecución de una actividad, la comprensión de un procedimiento, la resolución de errores y la confianza para participar. Por ello, hacer visible la voz docente mediante subtítulos en tiempo real puede mejorar el acceso, la autonomía y la participación de las y los estudiantes.
+
+\section{Marco Conceptual}
+
+La propuesta se fundamenta en el \textbf{Diseño Universal para el Aprendizaje}, que promueve ofrecer múltiples formas de representación de la información para reducir barreras de acceso y favorecer la participación de estudiantes diversos. El subtitulado en tiempo real convierte el discurso oral en un apoyo visual inmediato, ampliando las vías de acceso al contenido sin separar a estudiantes específicos de la dinámica común del aula.
+
+También se vincula con principios de \textbf{accesibilidad digital e inclusión educativa}. La iniciativa reconoce que las barreras no se encuentran únicamente en las características individuales de las personas, sino también en el modo en que se diseñan los recursos, ambientes y metodologías de enseñanza. Desde esta mirada, una clase accesible es aquella que ofrece condiciones más amplias para que todas y todos puedan comprender, participar y avanzar.
+
+La inteligencia artificial y el reconocimiento automático de voz son incorporados como componentes técnicos de apoyo, no como fin en sí mismos. Su valor pedagógico aparece cuando se integran a una metodología de aula medible, replicable y centrada en mejorar la experiencia de aprendizaje.
+
+\section{Objetivos}
+
+\subsection{Objetivo General}
+
+Implementar y validar un prototipo de subtitulado flotante en tiempo real como apoyo inclusivo a la docencia en la asignatura PRO301 Taller de Aplicaciones para Internet y/o una sección complementaria definida con apoyo de jefatura, con el fin de mejorar el acceso, comprensión y participación de las y los estudiantes durante clases del segundo semestre de 2026.
+
+\subsection{Objetivos Específicos}
+
+\begin{enumerate}
+  \item Diagnosticar las principales barreras de acceso a instrucciones y explicaciones orales percibidas por estudiantes participantes.
+  \item Implementar la aplicación de subtítulos flotantes en sesiones de clase seleccionadas, integrándola a actividades expositivas, demostrativas y prácticas.
+  \item Evaluar la percepción de utilidad, accesibilidad y participación estudiantil antes y después del uso del prototipo.
+  \item Ajustar la herramienta y la metodología de uso a partir de la experiencia de aula.
+  \item Explorar la generación de material complementario a partir de la transcripción autorizada de la clase, tales como resúmenes, glosarios, fichas de repaso o infografías.
+  \item Elaborar una guía de replicabilidad con aprendizajes, recomendaciones técnicas y orientaciones pedagógicas para otras asignaturas y sedes.
+\end{enumerate}
+
+\section{Metodología de Implementación}
+
+La implementación se organizará como un piloto pedagógico aplicado en una asignatura del segundo semestre 2026. La asignatura de origen será \textbf{PRO301 Taller de Aplicaciones para Internet}; sin embargo, dado que el curso actual del responsable cuenta con menos de 15 estudiantes, se incorporará una sección complementaria o un docente integrante del equipo, definido con apoyo de Don Elías, para cumplir el requisito de admisibilidad del concurso.
+
+\pending{Definir docente, asignatura o sección complementaria con 15 o más estudiantes.}
+
+El proceso considera cinco momentos:
+
+\begin{enumerate}
+  \item \textbf{Diagnóstico inicial:} aplicación de una encuesta breve para identificar barreras percibidas en el acceso a explicaciones e instrucciones orales.
+  \item \textbf{Preparación de sesiones:} selección de clases donde el subtitulado aporte valor real, especialmente en explicaciones, demostraciones técnicas y actividades guiadas.
+  \item \textbf{Implementación en aula:} uso de la aplicación con celular como micrófono, conexión por QR y subtítulos flotantes visibles para el curso.
+  \item \textbf{Evaluación y ajustes:} levantamiento de percepción estudiantil y docente, revisión de dificultades técnicas, ajustes de interfaz, estabilidad y metodología.
+  \item \textbf{Generación de apoyo posterior:} selección de fragmentos de transcripción autorizada para crear material complementario de refuerzo, como resúmenes, glosarios, fichas de estudio o infografías.
+  \item \textbf{Sistematización:} elaboración de una guía de replicabilidad con recomendaciones para docentes AIEP.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  stagebox/.style={rectangle, rounded corners=3pt, draw=AiepCyan, fill=SoftGray, thick, align=center, minimum height=1cm, text width=2.42cm},
+  arrow/.style={-{Latex[length=2.7mm]}, thick, color=AiepBlue}
+]
+\node[stagebox] (d1) {1. Diagnóstico};
+\node[stagebox, right=0.45cm of d1] (d2) {2. Preparación};
+\node[stagebox, right=0.45cm of d2] (d3) {3. Uso en aula};
+\node[stagebox, below=0.75cm of d3] (d4) {4. Evaluación\\y ajustes};
+\node[stagebox, left=0.45cm of d4] (d5) {5. Recursos\\de apoyo};
+\node[stagebox, left=0.45cm of d5] (d6) {6. Guía\\replicable};
+\draw[arrow] (d1) -- (d2);
+\draw[arrow] (d2) -- (d3);
+\draw[arrow] (d3) -- (d4);
+\draw[arrow] (d4) -- (d5);
+\draw[arrow] (d5) -- (d6);
+\draw[arrow] (d6) -| (d1);
+\end{tikzpicture}
+\caption{Ciclo de implementación pedagógica del prototipo durante el segundo semestre 2026.}
+\end{figure}
+
+\section{Factor Innovador}
+
+El factor innovador consiste en convertir una necesidad cotidiana de accesibilidad en una herramienta integrada al flujo real de la clase. A diferencia de soluciones de subtitulado asociadas a plataformas específicas de videoconferencia, el prototipo permite mostrar subtítulos sobre cualquier recurso utilizado por el docente: presentaciones, navegador, software disciplinar, material audiovisual o entorno de programación.
+
+La solución combina cuatro elementos diferenciadores:
+
+\begin{itemize}
+  \item Uso del celular del docente como micrófono, evitando equipamiento especializado.
+  \item Conexión simple mediante código QR, pensada para uso docente sin configuración técnica compleja.
+  \item Overlay o ventana flotante siempre visible sobre los recursos de enseñanza.
+  \item Transcripción local con Whisper cuando el modelo está disponible, reduciendo dependencia de servicios externos y evitando almacenamiento de audio.
+  \item Posibilidad de convertir la transcripción autorizada de la clase en material complementario para estudio posterior.
+\end{itemize}
+
+La innovación se expresa tanto en el desarrollo tecnológico como en su integración pedagógica: diagnóstico, uso guiado, evaluación, ajustes y transferencia institucional.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=1.2cm,
+  box/.style={rectangle, rounded corners=3pt, draw=AiepBlue, fill=SoftGray, very thick, align=center, minimum height=1cm, text width=2.75cm},
+  arrow/.style={-{Latex[length=3mm]}, very thick, color=AiepBlue}
+]
+\node[box] (phone) {Celular docente\\como micrófono};
+\node[box, right=of phone] (relay) {Relay seguro\\en tránsito};
+\node[box, right=of relay] (pc) {PC docente\\con Whisper};
+\node[box, right=of pc] (overlay) {Subtítulo flotante\\sobre la clase};
+\node[box, below=of pc] (materials) {Material complementario\\desde transcripción};
+\draw[arrow] (phone) -- node[above, font=\scriptsize]{audio} (relay);
+\draw[arrow] (relay) -- node[above, font=\scriptsize]{WebSocket} (pc);
+\draw[arrow] (pc) -- node[above, font=\scriptsize]{texto} (overlay);
+\draw[arrow] (pc) -- node[right, font=\scriptsize]{registro autorizado} (materials);
+\end{tikzpicture}
+\caption{Arquitectura funcional del prototipo: captura simple, transporte en tránsito, transcripción, apoyo visual inmediato y material complementario posterior.}
+\end{figure}
+
+\section{Material Complementario desde la Clase}
+
+Una mejora proyectada del prototipo consiste en aprovechar la transcripción autorizada de la clase para generar recursos de apoyo posterior. Esta funcionalidad permitiría procesar lo dicho por el docente y convertirlo en materiales breves, claros y reutilizables, tales como:
+
+\begin{itemize}
+  \item Resúmenes de clase para repaso.
+  \item Glosarios de conceptos técnicos mencionados durante la explicación.
+  \item Fichas de estudio con ideas clave y pasos de procedimientos.
+  \item Infografías o esquemas visuales para sintetizar contenidos.
+  \item Preguntas de autoevaluación para reforzar comprensión.
+\end{itemize}
+
+Esta función fortalece la propuesta porque extiende el valor de la accesibilidad más allá del momento de la clase. Lo que antes quedaba solo en la oralidad puede transformarse en material de estudio, especialmente útil para estudiantes que requieren repasar instrucciones, ordenar conceptos o recuperar explicaciones después de una sesión práctica.
+
+Para resguardar la privacidad, esta funcionalidad se plantea sobre registros textuales autorizados y con uso pedagógico explícito. No requiere almacenar audio; trabaja sobre transcripciones revisables por el docente antes de transformarlas en material complementario.
+
+\section{Enfoque Integral de Innovación con Equidad}
+
+El proyecto contribuye principalmente al enfoque inclusivo y de diversidad, con una consideración transversal de equidad en la participación.
+
+\subsection{Inclusión}
+
+La iniciativa aborda accesibilidad digital mediante subtítulos en vivo para estudiantes que enfrentan barreras auditivas, cognitivas, atencionales, lingüísticas o contextuales. El apoyo queda disponible para todo el curso, evitando que un estudiante deba declarar públicamente una necesidad específica para beneficiarse.
+
+\subsection{Diversidad}
+
+El proyecto reconoce que las y los estudiantes procesan la información de distintas maneras. Algunos comprenden mejor con apoyo visual, otros necesitan reforzar vocabulario técnico, y otros requieren una segunda vía de acceso a instrucciones complejas. El subtitulado permite que esas diferencias sean consideradas dentro de la clase común.
+
+\subsection{Equidad de Participación}
+
+La implementación considerará instrumentos de retroalimentación que permitan observar si la herramienta favorece la participación de estudiantes que suelen intervenir menos o que manifiestan inseguridad al solicitar repetición de instrucciones. La metodología busca que todas y todos puedan acceder a la explicación sin depender de pedir ayuda pública frente al curso.
+
+\section{Resultados Esperados e Indicadores}
+
+\begin{longtable}{p{4.2cm}p{5.2cm}p{4.5cm}}
+\toprule
+\textbf{Resultado esperado} & \textbf{Indicador sugerido} & \textbf{Medio de verificación} \\
+\midrule
+Participación mínima exigida por bases & Al menos 15 estudiantes participan en la implementación & Nómina o registro de sección participante \\
+Diagnóstico de barreras de comprensión oral & Al menos 15 respuestas en encuesta inicial & Encuesta diagnóstica \\
+Uso del prototipo en aula & Al menos 4 sesiones con subtítulos flotantes activos & Bitácora docente y evidencias de implementación \\
+Mejora percibida en acceso a instrucciones y explicaciones & 70\% o más de estudiantes declara que los subtítulos ayudaron a seguir la clase & Encuesta final \\
+Generación de apoyo posterior & Al menos 2 materiales complementarios elaborados desde transcripciones autorizadas & Resúmenes, fichas, glosarios o infografías generadas \\
+Ajustes al prototipo y metodología & Al menos 3 mejoras priorizadas a partir de retroalimentación & Registro de cambios y bitácora \\
+Transferencia institucional & 1 guía de replicabilidad para docentes AIEP & Documento de salida \\
+\bottomrule
+\end{longtable}
+
+\section{Plan de Acción}
+
+\begin{longtable}{p{3.1cm}p{5.6cm}p{3.2cm}p{3.2cm}}
+\toprule
+\textbf{Periodo} & \textbf{Actividad} & \textbf{Responsable} & \textbf{Producto} \\
+\midrule
+17 al 23 julio & Ajustes del proyecto según observaciones y firma de convenio & Responsable y equipo & Proyecto ajustado \\
+22 julio al 28 agosto & Solicitud de compras y servicios tecnológicos autorizados & Responsable y equipo & Compras gestionadas \\
+17 al 31 agosto & Diagnóstico inicial con estudiantes y planificación de sesiones & Responsable y docente complementario & Encuesta inicial y pauta de uso \\
+Septiembre & Implementación piloto en 2 sesiones & Responsable y equipo & Bitácora y retroalimentación temprana \\
+Septiembre-octubre & Ajustes técnicos y metodológicos del prototipo & Responsable y apoyo externo si aplica & Versión ajustada \\
+Octubre & Implementación ampliada en al menos 2 sesiones adicionales & Responsable y equipo & Evidencias de aplicación \\
+Octubre & Generación piloto de material complementario desde transcripciones autorizadas & Responsable y equipo & Resúmenes, fichas o infografías de apoyo \\
+Octubre & Encuesta final y análisis de resultados & Responsable y equipo & Informe breve de resultados \\
+25 septiembre al 4 noviembre & Apoyo a difusión institucional si el proyecto es seleccionado para piezas audiovisuales & Responsable y equipo & Material de difusión \\
+Hasta 4 noviembre & Elaboración de guía de replicabilidad & Responsable y equipo & Documento de salida \\
+Hasta 23 noviembre & Rendición técnico-financiera & Responsable & Informe y respaldos \\
+\bottomrule
+\end{longtable}
+
+\section{Presupuesto Tentativo}
+
+Monto máximo rendible por bases para Innovación en el Aula: \textbf{\$1.000.000}. El premio no reembolsable al responsable no se incluye en este presupuesto.
+
+\begin{tabularx}{\textwidth}{XrX}
+\toprule
+\textbf{Ítem} & \textbf{Monto estimado} & \textbf{Justificación} \\
+\midrule
+Servicios de mejoras tecnológicas del prototipo & \$450.000 & Ajustes de interfaz, estabilidad, empaquetado, experiencia de uso docente y módulo inicial de material complementario \\
+Kit de audio o micrófono para pruebas de aula & \$120.000 & Mejorar captura de voz en sala y comparar desempeño con celular \\
+Materiales de apoyo para implementación y evaluación & \$80.000 & Impresiones, pautas, encuestas o materiales de trabajo \\
+Diseño y diagramación de guía de replicabilidad & \$180.000 & Documento transferible para docentes de otras asignaturas y sedes \\
+Insumos para jornada de socialización o retroalimentación & \$100.000 & Colación o coffee break dentro del máximo permitido \\
+Material de difusión del proyecto & \$70.000 & Apoyo a socialización interna de resultados \\
+\midrule
+\textbf{Total} & \textbf{\$1.000.000} & \\
+\bottomrule
+\end{tabularx}
+
+\textbf{Nota presupuestaria:} los ítems de socialización y difusión suman \$170.000, equivalentes al 17\% del presupuesto total, manteniéndose bajo el límite conjunto de 20\% indicado en las bases.
+
+\section{Viabilidad}
+
+El prototipo ya cuenta con una base funcional desarrollada: aplicación de escritorio Tauri, relay WebSocket en Go desplegado en Railway, conexión mediante código QR, uso del celular como micrófono, overlay flotante, transcripción local con Whisper cuando el modelo está instalado, modo de respaldo, bitácora textual y resguardos de privacidad.
+
+Esto reduce el riesgo de ejecución, porque el proyecto no parte desde cero. La implementación propuesta se concentra en validar pedagógicamente la herramienta, mejorar la experiencia de uso docente, recoger evidencia de impacto percibido y sistematizar aprendizajes para replicabilidad institucional.
+
+La principal condición pendiente de viabilidad administrativa es definir una sección o docente complementario que permita cumplir el mínimo de 15 estudiantes participantes.
+
+\section{Privacidad y Resguardos}
+
+El diseño considera la privacidad como principio de implementación. El audio no se guarda en disco ni en el relay; se transmite en tránsito para generar subtítulos y se descarta. La transcripción local mediante Whisper evita depender de proveedores externos de transcripción cuando el modelo está instalado.
+
+Cuando exista registro textual para fines de evaluación del prototipo o generación de material complementario, se usará solo con propósito pedagógico, con autorización y revisión docente. El proyecto no requiere registrar diagnósticos personales ni identificar estudiantes con necesidades específicas para justificar su implementación.
+
+\section{Replicabilidad y Proyección Institucional}
+
+El proyecto tiene alto potencial de replicabilidad, ya que la problemática de acceso a explicaciones orales no pertenece a una sola asignatura o sede. La herramienta puede ser usada por docentes de distintas escuelas que requieran apoyar clases expositivas, demostrativas, prácticas o híbridas.
+
+La guía de salida incluirá requisitos técnicos, pasos de instalación, recomendaciones para uso en aula, pautas de diagnóstico, instrumentos de evaluación, criterios para usar transcripciones autorizadas y orientaciones para generar material complementario. Esto permitirá que otros docentes puedan adaptar la experiencia sin depender del equipo original.
+
+\section{Evidencia Visual del Prototipo}
+
+Las siguientes capturas muestran el estado actual del MVP funcional. Se incluyen como evidencia de viabilidad técnica y como apoyo visual para explicar la experiencia docente-estudiante durante la postulación.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{\detokenize\expandafter{\imgdesktopa}}
+  \caption{Pantalla principal con QR de conexión, panel de subtítulo actual, controles del overlay y resguardo de privacidad.}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \begin{minipage}{0.43\textwidth}
+    \centering
+    \includegraphics[height=12cm]{\detokenize\expandafter{\imgphonea}}
+    \caption{Vista móvil antes de iniciar captura: el celular funciona como micrófono docente conectado al PC.}
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.43\textwidth}
+    \centering
+    \includegraphics[height=12cm]{\detokenize\expandafter{\imgphoneb}}
+    \caption{Vista móvil durante captura: el texto reconocido se refleja como apoyo de subtitulado en tiempo real.}
+  \end{minipage}
+\end{figure}
+
+\newpage
+\appendix
+
+\section{Checklist de Postulación}
+
+\begin{itemize}
+  \item \chip{Listo} Línea recomendada: Innovación en el Aula.
+  \item \chip{Listo} Responsable: Diego Matías Obando Aguilera.
+  \item \chip{Listo} Sede: Osorno.
+  \item \chip{Listo} Escuela: Ingeniería, Energía y Tecnología.
+  \item \chip{Listo} Asignatura de origen: PRO301 Taller de Aplicaciones para Internet.
+  \item \chip{Pendiente} Definir docente, sección o asignatura complementaria para alcanzar 15 o más estudiantes.
+  \item \chip{Pendiente} Confirmar asignatura de implementación del segundo semestre 2026.
+  \item \chip{Pendiente} Gestionar carta de apoyo de Dirección o Subdirección Académica de sede, o autoridad válida indicada por AIEP.
+  \item \chip{Pendiente} Ajustar presupuesto al formato exacto de Charly.io.
+  \item \chip{Pendiente} Preparar evidencias del prototipo: capturas, demo breve o video.
+  \item \chip{Pendiente} Enviar formulario antes del plazo de cierre informado por la plataforma.
+\end{itemize}
+
+\section{Guion Base para Pitch de 90 Segundos}
+
+Hola, soy Diego Matías Obando Aguilera, docente de AIEP sede Osorno, y presento el proyecto \textbf{Aula Subtitulada AIEP}.
+
+Esta iniciativa nace a partir de una inquietud planteada por Don Elías Silva, Jefe Escuela Ingeniería, Energía y Tecnología, quien propuso avanzar hacia una herramienta que permitiera subtitular lo que el docente habla para apoyar a estudiantes con barreras auditivas. Yo tomé esa idea y desarrollé un prototipo funcional orientado al aula.
+
+En nuestras clases, mucha información clave ocurre por vía oral: instrucciones, ejemplos, correcciones y explicaciones espontáneas. Cuando un estudiante no escucha bien, se distrae, necesita más tiempo para procesar o está aprendiendo vocabulario técnico, esa información se pierde y afecta su participación.
+
+Nuestra propuesta transforma la voz del docente en subtítulos flotantes en tiempo real, visibles sobre cualquier presentación, navegador o software usado en la clase. El docente abre la app en el computador, escanea un QR con su celular, usa el teléfono como micrófono y los subtítulos aparecen en pantalla.
+
+La innovación no está solo en la tecnología, sino en su uso pedagógico inclusivo: permite una segunda vía de acceso al contenido, beneficia a todo el curso sin estigmatizar a nadie y puede aplicarse en clases presenciales, híbridas o demostrativas.
+
+Con el concurso queremos validarlo en aula, medir su utilidad con estudiantes, ajustar la experiencia y explorar una segunda función: transformar la transcripción autorizada de la clase en resúmenes, fichas o infografías de apoyo. Aula Subtitulada busca algo simple y potente: que la voz del docente sea más accesible durante la clase y que luego pueda convertirse en material útil para estudiar.
+
+\section{Borrador de Carta de Apoyo}
+
+\textbf{A quien corresponda:}
+
+Por medio de la presente, manifiesto mi apoyo a la postulación del proyecto \textbf{Aula Subtitulada AIEP: subtítulos flotantes en tiempo real para clases inclusivas}, liderado por el docente \textbf{Diego Matías Obando Aguilera}, en el marco del Concurso Innovación Docente 2026.
+
+La iniciativa se alinea con los desafíos de innovación educativa de la Escuela de Ingeniería, Energía y Tecnología de sede Osorno, al proponer una metodología inclusiva apoyada por tecnología que busca mejorar el acceso de las y los estudiantes a explicaciones e instrucciones orales durante la clase, y proyectar esas transcripciones autorizadas como material complementario de estudio.
+
+El proyecto surge a partir de una necesidad identificada desde la escuela: explorar herramientas que permitan subtitular o traducir en tiempo real lo que el docente comunica en aula, con especial atención a estudiantes que puedan enfrentar barreras auditivas, atencionales, lingüísticas o de comprensión de vocabulario técnico. A partir de esta inquietud, el docente postulante desarrolló un prototipo funcional y propone validarlo pedagógicamente durante el segundo semestre de 2026.
+
+Como jefatura, valoramos el potencial de esta propuesta para fortalecer prácticas docentes inclusivas, promover accesibilidad digital y generar aprendizajes transferibles a otras asignaturas y sedes. Asimismo, apoyaremos la gestión necesaria para identificar una sección o docente complementario que permita cumplir el requisito de participación mínima de 15 estudiantes.
+
+\vspace{1cm}
+\pending{Nombre, cargo y firma de autoridad que emite la carta}
+
+\vspace{0.5cm}
+Osorno, \pending{fecha}
+
+\section{Nota de Compilación}
+
+Este archivo fue preparado en LaTeX con codificación UTF-8 y compilado localmente con \texttt{tectonic}. El documento también queda listo para compilar en Overleaf o en una instalación local de TeX Live/MiKTeX.
+
+\end{document}

@@ -13,6 +13,8 @@ use tokio_tungstenite::{
 };
 use tracing::{info, warn};
 
+use crate::whisper::{CaptureMode, LocalWhisper};
+
 const DEFAULT_RELAY_URL: &str = "https://aiep-relay-production.up.railway.app";
 const RELAY_URL_ENV: &str = "AIEP_RELAY_URL";
 const HEARTBEAT: Duration = Duration::from_secs(30);
@@ -40,6 +42,7 @@ pub fn relay_config_from_env() -> RelayConfig {
 pub struct RelayState {
     mobile_url: RwLock<String>,
     session_id: RwLock<Option<String>>,
+    capture_mode: RwLock<CaptureMode>,
 }
 
 impl RelayState {
@@ -47,6 +50,7 @@ impl RelayState {
         Self {
             mobile_url: RwLock::new(String::new()),
             session_id: RwLock::new(None),
+            capture_mode: RwLock::new(CaptureMode::Speech),
         }
     }
 
@@ -59,10 +63,19 @@ impl RelayState {
     }
 
     fn set_session(&self, id: String, base_url: &str) -> String {
-        let url = format!("{}/m?s={}", base_url.trim_end_matches('/'), id);
+        let mode = *self.capture_mode.read().unwrap();
+        let url = mobile_url(base_url, &id, mode);
         *self.session_id.write().unwrap() = Some(id);
         *self.mobile_url.write().unwrap() = url.clone();
         url
+    }
+
+    pub fn set_capture_mode(&self, mode: CaptureMode, base_url: &str) -> Option<String> {
+        *self.capture_mode.write().unwrap() = mode;
+        let id = self.session_id()?;
+        let url = mobile_url(base_url, &id, mode);
+        *self.mobile_url.write().unwrap() = url.clone();
+        Some(url)
     }
 }
 
@@ -73,7 +86,12 @@ struct CaptionPayload {
     is_final: bool,
 }
 
-pub fn spawn_relay_client(app: AppHandle, cfg: RelayConfig, state: Arc<RelayState>) {
+pub fn spawn_relay_client(
+    app: AppHandle,
+    cfg: RelayConfig,
+    state: Arc<RelayState>,
+    whisper: LocalWhisper,
+) {
     tauri::async_runtime::spawn(async move {
         let mut backoff = BACKOFF_MIN;
         loop {
@@ -102,7 +120,7 @@ pub fn spawn_relay_client(app: AppHandle, cfg: RelayConfig, state: Arc<RelayStat
                     info!("relay: connected");
                     let _ = app.emit("relay-status", "online");
                     backoff = BACKOFF_MIN;
-                    run_session(&app, &state, &cfg, stream).await;
+                    run_session(&app, &state, &cfg, &whisper, stream).await;
                 }
                 Err(err) => {
                     warn!(?err, "relay: connect failed");
@@ -121,6 +139,7 @@ async fn run_session<S>(
     app: &AppHandle,
     state: &Arc<RelayState>,
     cfg: &RelayConfig,
+    whisper: &LocalWhisper,
     stream: tokio_tungstenite::WebSocketStream<S>,
 ) where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -147,6 +166,7 @@ async fn run_session<S>(
                     Message::Text(raw) => handle_text(app, state, cfg, raw.as_str()),
                     Message::Binary(data) => {
                         let _ = app.emit("audio-bytes", data.len() as u64);
+                        whisper.push_pcm_bytes(&data);
                     }
                     Message::Close(frame) => {
                         info!(?frame, "relay: close frame");
@@ -163,6 +183,15 @@ async fn run_session<S>(
             }
         }
     }
+}
+
+fn mobile_url(base_url: &str, id: &str, mode: CaptureMode) -> String {
+    format!(
+        "{}/m?s={}&mode={}",
+        base_url.trim_end_matches('/'),
+        id,
+        mode.as_query_value()
+    )
 }
 
 fn handle_text(app: &AppHandle, state: &Arc<RelayState>, cfg: &RelayConfig, raw: &str) {

@@ -331,7 +331,10 @@ button.btn-ghost:hover {
 
 .qr-status,
 .overlay-command-status,
-.audio-stats {
+.audio-stats,
+.whisper-status,
+.model-path,
+.download-progress {
   min-height: 32px;
   margin: 10px 0 0;
   color: var(--muted);
@@ -359,6 +362,43 @@ button.btn-ghost:hover {
   margin-top: 8px;
   color: var(--aiep-blue);
   font-weight: 850;
+}
+
+.whisper-status {
+  min-height: 0;
+  margin: 0;
+  color: var(--aiep-blue);
+  font-weight: 850;
+}
+
+.whisper-status[data-state="missing-model"],
+.whisper-status[data-state="error"] {
+  color: var(--aiep-red);
+}
+
+.whisper-status[data-state="ready"],
+.whisper-status[data-state="transcribing"] {
+  color: #12a66a;
+}
+
+.whisper-status[data-state="downloading-model"] {
+  color: var(--aiep-blue);
+}
+
+.model-path {
+  min-height: 0;
+  margin: -4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.download-progress {
+  min-height: 0;
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.3;
 }
 
 .settings-panel {
