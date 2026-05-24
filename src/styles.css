@@ -364,6 +364,14 @@ button.btn-ghost:hover {
   font-weight: 850;
 }
 
+.subtitle-queue {
+  min-height: 18px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .whisper-status {
   min-height: 0;
   margin: 0;
@@ -683,22 +691,21 @@ button.btn-ghost:hover {
   width: 100%;
   min-height: 0;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  display: block;
   margin: 0 auto;
-  padding: 18px 36px;
+  padding: 18px 44px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.84);
   color: white;
   font-size: 38px;
   font-weight: 900;
-  line-height: 1.18;
+  line-height: 1.22;
   text-align: start;
   overflow: hidden;
   overflow-wrap: anywhere;
   word-break: break-word;
+  max-height: calc(2lh + 36px);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
   cursor: move;
   user-select: none;
@@ -706,4 +713,39 @@ button.btn-ghost:hover {
 
 .subtitle-box.final {
   background: rgba(0, 0, 0, 0.84);
+}
+
+.subtitle-word {
+  display: inline-block;
+  white-space: normal;
+  vertical-align: baseline;
+}
+
+.subtitle-word.entering {
+  animation: subtitle-word-enter 280ms ease-out both;
+}
+
+.subtitle-word.current-word {
+  color: #fff7d6;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.95),
+    0 0 10px rgba(255, 247, 214, 0.22);
+}
+
+@keyframes subtitle-word-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.25em);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subtitle-word.entering {
+    animation: none;
+  }
 }

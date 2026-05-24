@@ -27,6 +27,11 @@ type TranscriptLine = {
 
 const TRANSCRIPT_KEY = "aiep-subtitulos.transcript";
 const SETTINGS_KEY = "aiep-subtitulos.settings";
+const FAST_ENGINE = "fast-speech";
+const LOCAL_ENGINE = "whisper-local";
+
+let latestWhisperStatus: WhisperStatus = "loading";
+let activeCaptureMode: "speech" | "pcm" | null = null;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -98,6 +103,7 @@ async function renderControl(root: HTMLDivElement) {
           </div>
         </div>
         <div class="preview-subtitle" id="preview-text">Esperando subtitulos...</div>
+        <p class="subtitle-queue" id="subtitle-queue" aria-live="polite"></p>
         <p class="audio-stats" id="audio-stats">Esperando audio del celular...</p>
         <p class="overlay-command-status" id="overlay-command-status">Overlay listo.</p>
       </section>
@@ -114,8 +120,8 @@ async function renderControl(root: HTMLDivElement) {
         <label class="field">
           Motor de transcripcion
           <select id="speech-engine">
-            <option value="whisper-local">Whisper local en este PC</option>
-            <option value="relay-audio">Reconocimiento web del celular (respaldo)</option>
+            <option value="fast-speech">Rapido: reconocimiento del celular</option>
+            <option value="whisper-local">Local: Whisper en este PC</option>
             <option value="openai" disabled>OpenAI speech-to-text (proximamente)</option>
           </select>
         </label>
@@ -202,6 +208,7 @@ async function renderControl(root: HTMLDivElement) {
   const audioStats = { totalBytes: 0, chunks: 0, lastUpdate: 0 };
   const previewPacer = createPacedSubtitle(
     document.querySelector<HTMLDivElement>("#preview-text"),
+    { maxVisibleWords: 34, onPendingChange: updateSubtitleQueue },
   );
   wireCaptionListeners({
     onCaption: (payload) => {
@@ -224,12 +231,27 @@ async function renderControl(root: HTMLDivElement) {
   updateInitialWhisperStatus();
 }
 
+function updateSubtitleQueue(words: number) {
+  const el = document.querySelector<HTMLParagraphElement>("#subtitle-queue");
+  if (!el) return;
+  el.textContent = words > 0 ? `Subtitulos pendientes: ${words} palabra(s)` : "";
+}
+
 function renderAudioStats(stats: { totalBytes: number; chunks: number; lastUpdate: number }) {
   const el = document.querySelector<HTMLParagraphElement>("#audio-stats");
   if (!el) return;
   const kb = (stats.totalBytes / 1024).toFixed(1);
   const seconds = Math.round((Date.now() - stats.lastUpdate) / 1000);
   el.textContent = `Audio recibido: ${kb} KB en ${stats.chunks} chunk(s) — ultimo hace ${seconds}s`;
+}
+
+function updateAudioModeHint(engine: string) {
+  const el = document.querySelector<HTMLParagraphElement>("#audio-stats");
+  if (!el) return;
+  el.textContent =
+    engine === LOCAL_ENGINE
+      ? "Modo local: esperando audio PCM del celular..."
+      : "Modo rapido: los subtitulos llegan desde el reconocimiento del celular.";
 }
 
 // Post-procesamiento de captions del speech engine. Web Speech (y otros)
@@ -270,22 +292,40 @@ function normalizeCaption(text: string): string {
 // (~4 words/sec base, up to ~8 wps briefly to catch up). Matches how live
 // caption tools (Otter, Live Transcribe) keep subtitles readable when the
 // speaker is faster than the reader.
-function createPacedSubtitle(el: HTMLElement | null) {
-  const TICK_MS = 240; // base rate ~= 4 words/sec
-  const FAST_BACKLOG = 12; // start taking 2 words/tick once this far behind
-  const SKIP_BACKLOG = 28; // collapse harder past this many backlog words
-  const SKIP_KEEP_TAIL = 12; // how much of the backlog to leave after a skip
-  const MAX_DISPLAYED_WORDS = 240; // hard cap so memory + DOM don't grow forever; clipping is handled by CSS overflow
+function createPacedSubtitle(
+  el: HTMLElement | null,
+  opts: { maxVisibleWords?: number; onPendingChange?: (words: number) => void } = {},
+) {
+  const TICK_MS = 300; // fixed tempo ~= 3.3 words/sec
+  const MAX_VISIBLE_WORDS = opts.maxVisibleWords ?? 28;
+  const MAX_HISTORY_WORDS = 420;
+  const ANCHOR_SEARCH_WORDS = 140;
+  const DISTINCTIVE_KEY_LENGTH = 5;
 
-  let target = "";
-  let displayed = "";
+  let visibleWords: string[] = [];
+  let pendingWords: string[] = [];
+  let acceptedHistory: string[] = [];
   let displayedIsPlaceholder = false;
+  let enteringIndex: number | null = null;
   let intervalId: number | null = null;
 
-  const apply = (text: string) => {
+  const applyText = (text: string) => {
     if (!el) return;
     if (el.textContent === text) return;
     el.textContent = text;
+  };
+
+  const applyWords = () => {
+    if (!el) return;
+    el.innerHTML = visibleWords
+      .map((word, index) => {
+        const classes = ["subtitle-word"];
+        if (index === enteringIndex) classes.push("entering");
+        else classes.push("settled");
+        if (index === visibleWords.length - 1) classes.push("current-word");
+        return `<span class="${classes.join(" ")}">${escapeHtml(word)}</span>`;
+      })
+      .join(" ");
   };
 
   const stop = () => {
@@ -295,15 +335,26 @@ function createPacedSubtitle(el: HTMLElement | null) {
     }
   };
 
-  // Longest suffix of `d` that equals a prefix of `t`. Used to track how much
-  // of the latest target the displayed text already covers, even when the
-  // mobile dedup sliding-window drops words off the front of target.
-  const findOverlap = (d: string[], t: string[]): number => {
-    const max = Math.min(d.length, t.length);
+  const toWords = (text: string) => text.trim().split(/\s+/).filter(Boolean);
+
+  const wordKey = (word: string) =>
+    word
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\p{L}\p{N}]/gu, "");
+
+  const sameWordForQueue = (a: string, b: string) => wordKey(a) === wordKey(b);
+
+  const isEmptyWord = (word: string) => wordKey(word).length === 0;
+
+  // Longest suffix of `known` that equals a prefix of `incoming`.
+  const findOverlap = (known: string[], incoming: string[]): number => {
+    const max = Math.min(known.length, incoming.length);
     for (let n = max; n > 0; n--) {
       let ok = true;
       for (let i = 0; i < n; i++) {
-        if (d[d.length - n + i] !== t[i]) {
+        if (!sameWordForQueue(known[known.length - n + i], incoming[i])) {
           ok = false;
           break;
         }
@@ -313,38 +364,76 @@ function createPacedSubtitle(el: HTMLElement | null) {
     return 0;
   };
 
+  // Web Speech corrige palabras anteriores mientras habla. Cuando una ventana
+  // nueva reescribe parte de la frase, buscamos el ultimo ancla ya aceptada y
+  // solo encolamos lo que viene despues, en vez de repetir la ventana completa.
+  const findNovelTailAfterKnownAnchor = (known: string[], incoming: string[]) => {
+    const recentKnown = known.slice(-ANCHOR_SEARCH_WORDS);
+    for (let incomingIndex = incoming.length - 1; incomingIndex >= 0; incomingIndex--) {
+      const incomingKey = wordKey(incoming[incomingIndex]);
+      if (!incomingKey) continue;
+
+      for (let knownIndex = recentKnown.length - 1; knownIndex >= 0; knownIndex--) {
+        if (wordKey(recentKnown[knownIndex]) !== incomingKey) continue;
+
+        let matchLength = 0;
+        while (
+          incomingIndex - matchLength >= 0 &&
+          knownIndex - matchLength >= 0 &&
+          sameWordForQueue(
+            recentKnown[knownIndex - matchLength],
+            incoming[incomingIndex - matchLength],
+          )
+        ) {
+          matchLength++;
+        }
+
+        const hasContext = matchLength >= 2;
+        const hasDistinctiveAnchor = incomingKey.length >= DISTINCTIVE_KEY_LENGTH;
+        if (hasContext || hasDistinctiveAnchor) {
+          return incoming.slice(incomingIndex + 1);
+        }
+      }
+    }
+    return incoming;
+  };
+
+  const containsSequence = (haystack: string[], needle: string[]) => {
+    if (needle.length === 0 || needle.length > haystack.length) return false;
+    for (let start = 0; start <= haystack.length - needle.length; start++) {
+      let ok = true;
+      for (let offset = 0; offset < needle.length; offset++) {
+        if (!sameWordForQueue(haystack[start + offset], needle[offset])) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return true;
+    }
+    return false;
+  };
+
+  const notifyPending = () => {
+    opts.onPendingChange?.(pendingWords.length);
+  };
+
+  const applyVisible = () => {
+    applyWords();
+  };
+
   const tick = () => {
-    if (displayed === target) {
+    if (pendingWords.length === 0) {
       stop();
       return;
     }
-    const tWords = target.trim().split(/\s+/).filter(Boolean);
-    if (tWords.length === 0) {
-      displayed = target;
-      apply(displayed);
-      stop();
-      return;
+
+    if (visibleWords.length >= MAX_VISIBLE_WORDS) {
+      visibleWords = [];
     }
-    const dWords = displayed.trim().split(/\s+/).filter(Boolean);
-    const overlap = findOverlap(dWords, tWords);
-    const remaining = tWords.slice(overlap);
-    if (remaining.length === 0) {
-      stop();
-      return;
-    }
-    // Si el texto mostrado no comparte nada con el target (ej: viene de un
-    // placeholder, hubo silencio largo y el dedup movil tiro la ventana
-    // entera), arrancamos limpio en vez de apendear "Escuchando..." + nuevo.
-    const baseWords = overlap === 0 && dWords.length > 0 ? [] : dWords;
-    let take = 1;
-    if (remaining.length > FAST_BACKLOG) take = 2;
-    if (remaining.length > SKIP_BACKLOG) take = remaining.length - SKIP_KEEP_TAIL;
-    const merged = [...baseWords, ...remaining.slice(0, take)];
-    if (merged.length > MAX_DISPLAYED_WORDS) {
-      merged.splice(0, merged.length - MAX_DISPLAYED_WORDS);
-    }
-    displayed = merged.join(" ");
-    apply(displayed);
+    visibleWords.push(pendingWords.shift()!);
+    enteringIndex = visibleWords.length - 1;
+    applyVisible();
+    notifyPending();
   };
 
   const start = () => {
@@ -354,30 +443,57 @@ function createPacedSubtitle(el: HTMLElement | null) {
 
   return {
     set(text: string, opts: { instant?: boolean } = {}) {
-      target = text;
       if (opts.instant) {
-        displayed = text;
+        visibleWords = toWords(text);
+        pendingWords = [];
+        acceptedHistory = visibleWords.filter((word) => !isEmptyWord(word)).slice(-MAX_HISTORY_WORDS);
         displayedIsPlaceholder = true;
-        apply(displayed);
+        enteringIndex = null;
+        applyText(text);
+        notifyPending();
         stop();
         return;
       }
       // Si lo ultimo mostrado era un placeholder ("Escuchando...") arrancamos
       // limpio en lugar de apendear las palabras nuevas al placeholder.
       if (displayedIsPlaceholder) {
-        displayed = "";
+        visibleWords = [];
+        pendingWords = [];
+        acceptedHistory = [];
+        enteringIndex = null;
         displayedIsPlaceholder = false;
       }
-      if (target === displayed) {
-        stop();
+
+      const incoming = toWords(text).filter((word) => !isEmptyWord(word));
+      if (incoming.length === 0) {
         return;
       }
+
+      if (containsSequence(acceptedHistory, incoming)) {
+        return;
+      }
+
+      const overlap = findOverlap(acceptedHistory, incoming);
+      const novel = overlap > 0
+        ? incoming.slice(overlap)
+        : findNovelTailAfterKnownAnchor(acceptedHistory, incoming);
+      if (novel.length === 0) return;
+
+      pendingWords.push(...novel);
+      acceptedHistory.push(...novel);
+      if (acceptedHistory.length > MAX_HISTORY_WORDS) {
+        acceptedHistory = acceptedHistory.slice(-MAX_HISTORY_WORDS);
+      }
+      notifyPending();
       start();
     },
     reset() {
-      target = "";
-      displayed = "";
+      visibleWords = [];
+      pendingWords = [];
+      acceptedHistory = [];
+      enteringIndex = null;
       displayedIsPlaceholder = false;
+      notifyPending();
       stop();
     },
   };
@@ -421,7 +537,7 @@ function renderOverlay(root: HTMLDivElement) {
     invoke("close_overlay");
   });
 
-  const overlayPacer = createPacedSubtitle(subtitle);
+  const overlayPacer = createPacedSubtitle(subtitle, { maxVisibleWords: 18 });
   wireCaptionListeners({
     onCaption: (payload) => {
       if (paused || !subtitle) return;
@@ -477,7 +593,10 @@ function updatePhoneStatus(status: string) {
 
   if (label) {
     label.textContent =
-      normalized === "connected"
+      normalized === "connected" ||
+      normalized.startsWith("speech:") ||
+      normalized.startsWith("chunks:") ||
+      normalized.startsWith("samplerate:")
         ? "Celular conectado"
         : normalized === "disconnected"
           ? "Celular desconectado"
@@ -510,6 +629,19 @@ async function updateMobileUrl(url: string) {
     }
   } else {
     qrFrame?.classList.remove("has-qr");
+  }
+}
+
+async function setBackendCaptureMode(mode: "speech" | "pcm") {
+  if (activeCaptureMode === mode) return true;
+  try {
+    const nextUrl = await invoke<string>("set_capture_mode", { mode });
+    activeCaptureMode = mode;
+    if (nextUrl) await updateMobileUrl(nextUrl);
+    return true;
+  } catch (error) {
+    console.warn("No se pudo cambiar el modo de captura", error);
+    return false;
   }
 }
 
@@ -564,33 +696,56 @@ async function updateInitialWhisperStatus() {
 }
 
 function updateWhisperStatus(status: WhisperStatus) {
+  latestWhisperStatus = status;
   const el = document.querySelector<HTMLParagraphElement>("#whisper-status");
   const speechEngine = document.querySelector<HTMLSelectElement>("#speech-engine");
   const progress = document.querySelector<HTMLParagraphElement>("#download-progress");
   if (!el) return;
 
   el.dataset.state = status;
-  el.textContent =
-    status === "ready"
-      ? "Whisper local listo. El celular enviara audio PCM al PC."
-      : status === "transcribing"
-        ? "Whisper esta transcribiendo audio del celular..."
-        : status === "downloading-model"
-          ? "Descargando modelo Whisper local. Mientras tanto se usara reconocimiento web."
-        : status === "missing-model"
-          ? "Modelo no encontrado. Se usara reconocimiento web del celular como respaldo."
-          : status === "error"
-            ? "Whisper tuvo un error. Se usara reconocimiento web del celular como respaldo."
-            : "Cargando Whisper local...";
+  const localSelected = speechEngine?.value === LOCAL_ENGINE;
+  el.textContent = whisperStatusCopy(status, localSelected);
 
   if (progress && status !== "downloading-model") {
     progress.textContent = "";
   }
 
-  if (speechEngine) {
-    speechEngine.value =
-      status === "ready" || status === "transcribing" ? "whisper-local" : "relay-audio";
+  if (speechEngine && localSelected && !isWhisperReadyForPcm(status)) {
+    speechEngine.value = FAST_ENGINE;
+    const settings = loadSettings();
+    settings.speechEngine = FAST_ENGINE;
+    saveSettings(settings);
+    updateAudioModeHint(FAST_ENGINE);
+    setBackendCaptureMode("speech");
+  } else if (speechEngine && localSelected && isWhisperReadyForPcm(status)) {
+    setBackendCaptureMode("pcm");
   }
+}
+
+function whisperStatusCopy(status: WhisperStatus, localSelected: boolean) {
+  if (localSelected) {
+    return status === "ready"
+      ? "Whisper local listo. El celular enviara audio PCM al PC; puede tardar mas que el modo rapido."
+      : status === "transcribing"
+        ? "Whisper local esta transcribiendo. Si se atrasa, cambia a modo rapido."
+        : status === "downloading-model"
+          ? "Descargando modelo Whisper local. Mientras tanto se usara el modo rapido del celular."
+          : status === "error"
+            ? "Whisper tuvo un error. Se volvio al modo rapido del celular."
+            : "Preparando Whisper local. Se usara modo rapido hasta que quede listo.";
+  }
+
+  return status === "ready" || status === "transcribing"
+    ? "Modo rapido activo. Whisper local esta disponible si prefieres privacidad local."
+    : status === "downloading-model"
+      ? "Modo rapido activo. Descargando Whisper local en segundo plano."
+      : status === "error"
+        ? "Modo rapido activo. Whisper local tuvo un error."
+        : "Modo rapido activo. Preparando Whisper local en segundo plano.";
+}
+
+function isWhisperReadyForPcm(status: WhisperStatus) {
+  return status === "ready" || status === "transcribing";
 }
 
 function updateWhisperDownloadProgress(progress: DownloadProgressPayload) {
@@ -610,11 +765,16 @@ function updateWhisperDownloadProgress(progress: DownloadProgressPayload) {
 function loadSettings() {
   const fallback = {
     saveTranscript: true,
-    speechEngine: "relay-audio",
+    speechEngine: FAST_ENGINE,
   };
 
   try {
-    return { ...fallback, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+    const parsed = { ...fallback, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+    if (parsed.speechEngine === "relay-audio") parsed.speechEngine = FAST_ENGINE;
+    if (parsed.speechEngine !== FAST_ENGINE && parsed.speechEngine !== LOCAL_ENGINE) {
+      parsed.speechEngine = FAST_ENGINE;
+    }
+    return parsed;
   } catch {
     return fallback;
   }
@@ -630,6 +790,8 @@ function wireSettings(settings: ReturnType<typeof loadSettings>) {
 
   if (saveTranscript) saveTranscript.checked = settings.saveTranscript;
   if (speechEngine) speechEngine.value = settings.speechEngine;
+  updateAudioModeHint(settings.speechEngine);
+  setBackendCaptureMode(settings.speechEngine === LOCAL_ENGINE && isWhisperReadyForPcm(latestWhisperStatus) ? "pcm" : "speech");
 
   saveTranscript?.addEventListener("change", () => {
     settings.saveTranscript = saveTranscript.checked;
@@ -638,7 +800,14 @@ function wireSettings(settings: ReturnType<typeof loadSettings>) {
 
   speechEngine?.addEventListener("change", () => {
     settings.speechEngine = speechEngine.value;
+    if (settings.speechEngine === LOCAL_ENGINE && !isWhisperReadyForPcm(latestWhisperStatus)) {
+      settings.speechEngine = FAST_ENGINE;
+      speechEngine.value = FAST_ENGINE;
+    }
     saveSettings(settings);
+    updateAudioModeHint(settings.speechEngine);
+    setBackendCaptureMode(settings.speechEngine === LOCAL_ENGINE ? "pcm" : "speech");
+    updateWhisperStatus(latestWhisperStatus);
   });
 }
 

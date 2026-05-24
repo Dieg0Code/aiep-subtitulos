@@ -10,7 +10,7 @@ use tauri::{
 use tracing_subscriber::EnvFilter;
 
 use crate::relay::{relay_config_from_env, spawn_relay_client, RelayState};
-use crate::whisper::{model_path, spawn_local_whisper, WhisperUiState};
+use crate::whisper::{model_path, spawn_local_whisper, CaptureMode, WhisperUiState};
 
 #[tauri::command]
 fn mobile_url(state: tauri::State<'_, Arc<RelayState>>) -> String {
@@ -25,6 +25,29 @@ fn whisper_model_path(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 fn whisper_status(state: tauri::State<'_, Arc<WhisperUiState>>) -> String {
     state.status()
+}
+
+#[tauri::command]
+fn set_capture_mode(
+    state: tauri::State<'_, Arc<RelayState>>,
+    whisper_state: tauri::State<'_, Arc<WhisperUiState>>,
+    mode: String,
+) -> Result<String, String> {
+    let requested = match mode.as_str() {
+        "pcm" => {
+            if !whisper_state.current().is_ready_for_pcm() {
+                return Err("Whisper local aun no esta listo".to_string());
+            }
+            CaptureMode::Pcm
+        }
+        "speech" => CaptureMode::Speech,
+        other => return Err(format!("Modo de captura desconocido: {other}")),
+    };
+
+    let cfg = relay_config_from_env();
+    Ok(state
+        .set_capture_mode(requested, &cfg.base_url)
+        .unwrap_or_else(|| state.mobile_url()))
 }
 
 #[tauri::command]
@@ -115,7 +138,8 @@ pub fn run() {
             hide_overlay,
             reset_overlay_position,
             whisper_model_path,
-            whisper_status
+            whisper_status,
+            set_capture_mode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

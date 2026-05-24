@@ -5,8 +5,9 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     ptr::NonNull,
-    sync::{mpsc, Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
     thread,
+    time::Duration,
 };
 
 use serde::Serialize;
@@ -17,31 +18,61 @@ use whisper_rs_sys as whisper;
 use crate::relay::RelayState;
 
 const SAMPLE_RATE: usize = 16_000;
-const WINDOW_SAMPLES: usize = SAMPLE_RATE * 5 / 2; // 2.5s
-const OVERLAP_SAMPLES: usize = SAMPLE_RATE / 2; // 0.5s
-const MAX_BUFFER_SAMPLES: usize = SAMPLE_RATE * 15;
+const WINDOW_SAMPLES: usize = SAMPLE_RATE * 2;
+const MAX_BUFFER_SAMPLES: usize = SAMPLE_RATE * 8;
+const TRANSCRIBE_INTERVAL: Duration = Duration::from_millis(900);
+const MIN_RMS: f32 = 0.006;
 const MODEL_FILE_NAME: &str = "ggml-base.bin";
 const MODEL_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin?download=true";
 const MIN_MODEL_BYTES: u64 = 100 * 1024 * 1024;
 
 pub struct WhisperUiState {
-    status: RwLock<String>,
+    status: RwLock<WhisperStatus>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WhisperStatus {
+    Loading,
+    DownloadingModel,
+    Ready,
+    Transcribing,
+    Error,
+}
+
+impl WhisperStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Loading => "loading",
+            Self::DownloadingModel => "downloading-model",
+            Self::Ready => "ready",
+            Self::Transcribing => "transcribing",
+            Self::Error => "error",
+        }
+    }
+
+    pub fn is_ready_for_pcm(self) -> bool {
+        matches!(self, Self::Ready | Self::Transcribing)
+    }
 }
 
 impl WhisperUiState {
     pub fn new() -> Self {
         Self {
-            status: RwLock::new("loading".to_string()),
+            status: RwLock::new(WhisperStatus::Loading),
         }
     }
 
     pub fn status(&self) -> String {
-        self.status.read().unwrap().clone()
+        self.status.read().unwrap().as_str().to_string()
     }
 
-    fn set_status(&self, status: &str) {
-        *self.status.write().unwrap() = status.to_string();
+    pub fn current(&self) -> WhisperStatus {
+        *self.status.read().unwrap()
+    }
+
+    fn set_status(&self, status: WhisperStatus) {
+        *self.status.write().unwrap() = status;
     }
 }
 
@@ -62,7 +93,7 @@ impl CaptureMode {
 
 #[derive(Clone)]
 pub struct LocalWhisper {
-    tx: Option<mpsc::SyncSender<Vec<f32>>>,
+    buffer: Arc<Mutex<VecDeque<f32>>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -161,17 +192,16 @@ impl WhisperEngine {
 
 impl LocalWhisper {
     pub fn push_pcm_bytes(&self, bytes: &[u8]) {
-        let Some(tx) = &self.tx else {
+        if bytes.len() < 2 {
             return;
-        };
+        }
 
-        let samples = bytes
-            .chunks_exact(2)
-            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0)
-            .collect::<Vec<_>>();
-
-        if !samples.is_empty() {
-            let _ = tx.try_send(samples);
+        let mut buffer = self.buffer.lock().unwrap();
+        for chunk in bytes.chunks_exact(2) {
+            buffer.push_back(i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0);
+        }
+        while buffer.len() > MAX_BUFFER_SAMPLES {
+            buffer.pop_front();
         }
     }
 }
@@ -190,110 +220,72 @@ pub fn spawn_local_whisper(
     base_url: String,
     model_path: PathBuf,
 ) -> LocalWhisper {
-    emit_status(
-        &app,
-        &state,
-        &ui_state,
-        &base_url,
-        "loading",
-        CaptureMode::Speech,
-    );
+    emit_status(&app, &ui_state, WhisperStatus::Loading);
 
     if !model_path.is_file() {
         warn!(path = %model_path.display(), "whisper: model not found, downloading");
     }
 
-    let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(1);
+    let buffer = Arc::new(Mutex::new(VecDeque::<f32>::new()));
+    let worker_buffer = buffer.clone();
     thread::spawn(move || {
-        if let Err(error) = run_worker(
-            app.clone(),
-            state.clone(),
-            ui_state.clone(),
-            base_url.clone(),
-            rx,
-            model_path,
-        ) {
+        if let Err(error) = run_worker(app.clone(), ui_state.clone(), worker_buffer, model_path) {
             warn!(?error, "whisper: worker stopped");
-            emit_status(
-                &app,
-                &state,
-                &ui_state,
-                &base_url,
-                "error",
-                CaptureMode::Speech,
-            );
+            emit_status(&app, &ui_state, WhisperStatus::Error);
+            if let Some(url) = state.set_capture_mode(CaptureMode::Speech, &base_url) {
+                let _ = app.emit("mobile-url-update", url);
+            }
         }
     });
 
-    LocalWhisper { tx: Some(tx) }
+    LocalWhisper { buffer }
 }
 
-fn emit_status(
-    app: &AppHandle,
-    state: &Arc<RelayState>,
-    ui_state: &Arc<WhisperUiState>,
-    base_url: &str,
-    status: &str,
-    mode: CaptureMode,
-) {
+fn emit_status(app: &AppHandle, ui_state: &Arc<WhisperUiState>, status: WhisperStatus) {
     ui_state.set_status(status);
-    let _ = app.emit("whisper-status", status);
-    if let Some(url) = state.set_capture_mode(mode, base_url) {
-        let _ = app.emit("mobile-url-update", url);
-    }
+    let _ = app.emit("whisper-status", status.as_str());
 }
 
-fn emit_runtime_status(app: &AppHandle, ui_state: &Arc<WhisperUiState>, status: &str) {
+fn emit_runtime_status(app: &AppHandle, ui_state: &Arc<WhisperUiState>, status: WhisperStatus) {
     ui_state.set_status(status);
-    let _ = app.emit("whisper-status", status);
+    let _ = app.emit("whisper-status", status.as_str());
 }
 
 fn run_worker(
     app: AppHandle,
-    state_for_mode: Arc<RelayState>,
     ui_state: Arc<WhisperUiState>,
-    base_url: String,
-    rx: mpsc::Receiver<Vec<f32>>,
+    audio_buffer: Arc<Mutex<VecDeque<f32>>>,
     model_path: PathBuf,
 ) -> Result<(), String> {
-    ensure_model_available(&app, &state_for_mode, &ui_state, &base_url, &model_path)?;
+    ensure_model_available(&app, &ui_state, &model_path)?;
 
     info!(path = %model_path.display(), "whisper: loading model");
     let mut engine = WhisperEngine::new(model_path)?;
 
-    emit_status(
-        &app,
-        &state_for_mode,
-        &ui_state,
-        &base_url,
-        "ready",
-        CaptureMode::Pcm,
-    );
+    emit_status(&app, &ui_state, WhisperStatus::Ready);
 
-    let mut buffer = VecDeque::<f32>::new();
     let mut last_text = String::new();
 
-    while let Ok(samples) = rx.recv() {
-        buffer.extend(samples);
-        while buffer.len() > MAX_BUFFER_SAMPLES {
-            buffer.pop_front();
-        }
+    loop {
+        thread::sleep(TRANSCRIBE_INTERVAL);
 
-        if buffer.len() < WINDOW_SAMPLES {
+        let window = {
+            let buffer = audio_buffer.lock().unwrap();
+            if buffer.len() < WINDOW_SAMPLES {
+                continue;
+            }
+            buffer
+                .iter()
+                .skip(buffer.len().saturating_sub(WINDOW_SAMPLES))
+                .copied()
+                .collect::<Vec<_>>()
+        };
+
+        if rms(&window) < MIN_RMS {
             continue;
         }
 
-        let window = buffer
-            .iter()
-            .copied()
-            .take(WINDOW_SAMPLES)
-            .collect::<Vec<_>>();
-        let drain = WINDOW_SAMPLES.saturating_sub(OVERLAP_SAMPLES);
-        for _ in 0..drain.min(buffer.len()) {
-            buffer.pop_front();
-        }
-
-        emit_runtime_status(&app, &ui_state, "transcribing");
+        emit_runtime_status(&app, &ui_state, WhisperStatus::Transcribing);
         let text = transcribe_window(&mut engine, &window)?;
         let clean = text.split_whitespace().collect::<Vec<_>>().join(" ");
         if !clean.is_empty() && clean != last_text {
@@ -306,31 +298,23 @@ fn run_worker(
                 },
             );
         }
-        emit_runtime_status(&app, &ui_state, "ready");
+        emit_runtime_status(&app, &ui_state, WhisperStatus::Ready);
     }
 
+    #[allow(unreachable_code)]
     Ok(())
 }
 
 fn ensure_model_available(
     app: &AppHandle,
-    state: &Arc<RelayState>,
     ui_state: &Arc<WhisperUiState>,
-    base_url: &str,
     model_path: &PathBuf,
 ) -> Result<(), String> {
     if is_valid_model(model_path) {
         return Ok(());
     }
 
-    emit_status(
-        app,
-        state,
-        ui_state,
-        base_url,
-        "downloading-model",
-        CaptureMode::Speech,
-    );
+    emit_status(app, ui_state, WhisperStatus::DownloadingModel);
 
     let parent = model_path
         .parent()
@@ -396,6 +380,14 @@ fn is_valid_model(model_path: &PathBuf) -> bool {
         .unwrap_or(false)
 }
 
+fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let sum = samples.iter().map(|sample| sample * sample).sum::<f32>();
+    (sum / samples.len() as f32).sqrt()
+}
+
 fn transcribe_window(engine: &mut WhisperEngine, samples: &[f32]) -> Result<String, String> {
     let mut params = unsafe {
         whisper::whisper_full_default_params(
@@ -407,11 +399,15 @@ fn transcribe_window(engine: &mut WhisperEngine, samples: &[f32]) -> Result<Stri
     params.translate = false;
     params.n_threads = 2;
     params.no_context = true;
+    params.no_timestamps = true;
     params.single_segment = true;
     params.print_special = false;
     params.print_progress = false;
     params.print_realtime = false;
     params.print_timestamps = false;
+    params.suppress_blank = true;
+    params.temperature = 0.0;
+    params.max_tokens = 48;
 
     let result = unsafe {
         whisper::whisper_full_with_state(

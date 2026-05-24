@@ -25,13 +25,13 @@ El resto de este README es para desarrolladores. Si solo quieres usar la app, co
 - Muestra un QR con la URL del celular: `https://aiep-relay-production.up.railway.app/m?s=<id>`.
 - El celular abre esa URL (HTTPS valido), pide permiso de microfono y empieza a enviar audio.
 - El PC recibe audio PCM 16 kHz en vivo y mantiene un contador para verificar el flujo.
-- Muestra el overlay flotante always-on-top con los subtitulos generados por Whisper local cuando el modelo esta instalado.
+- Muestra el overlay flotante always-on-top con subtitulos rapidos generados por el celular o, opcionalmente, por Whisper local.
 - Permite mostrar, ocultar, cerrar, mover y reposicionar el overlay.
 - Guarda localmente un registro de lo transcrito y permite descargarlo como TXT.
 
 ## Capturas
 
-Vista de escritorio con QR, motor Whisper local, bitacora y overlay flotante:
+Vista de escritorio con QR, selector de motor, bitacora y overlay flotante:
 
 ![App de escritorio con overlay activo](postulacion-assets/desktop-overlay-transcribiendo.png)
 
@@ -43,16 +43,18 @@ Vista del celular usado como microfono docente:
 
 ## Estado del MVP
 
-Esta version logra el flujo completo de captura, transporte y transcripcion local cuando el modelo esta instalado:
+Esta version logra el flujo completo de captura, transporte y subtitulos en vivo con modo rapido por defecto y Whisper local opcional:
 
 - F1 cerrado: celular captura audio y lo envia en chunks binarios al relay, el relay lo forwardea al PC. Se observa con el contador `Audio recibido: X KB en N chunks`.
-- F2 simple: `whisper-rs-sys` corre en el PC con CPU y modelo `ggml-base.bin`. Si falta el modelo, la app lo descarga automaticamente y el celular cae a reconocimiento web como respaldo mientras termina.
+- Modo rapido por defecto: el celular usa Web Speech y manda captions JSON al PC para bajar la latencia percibida.
+- Modo local opcional: `whisper-rs-sys` corre en el PC con CPU y modelo `ggml-base.bin`. Si falta el modelo, la app lo descarga automaticamente en segundo plano.
+- El audio PCM se mantiene en un buffer circular en memoria y Whisper transcribe la ventana mas reciente para evitar subtitulos atrasados cuando la CPU se demora.
 - F3 pendiente: ventana deslizante / interim captions.
 
 Importante:
 
 - No se guarda audio en ningun lado (ni PC, ni relay).
-- El audio pasa por el relay en transito (PCM 16 kHz en WebSocket cuando Whisper esta activo). No se almacena.
+- El audio/texto pasa por el relay en transito (captions JSON en modo rapido; PCM 16 kHz cuando Whisper local esta activo). No se almacena.
 - El overlay es una ventana Tauri transparente, flotante y movible.
 
 ## Requisitos
@@ -101,13 +103,14 @@ La primera compilacion de Rust toma varios minutos.
 ## Uso
 
 1. Abre la app con `npm run tauri dev`.
-2. Si falta `ggml-base.bin`, espera la descarga automatica del modelo (~141 MB). Mientras baja, el QR usa reconocimiento web del celular como respaldo.
-3. Espera el QR (1-2 segundos despues de conectar al relay).
-4. Escanea el QR con el celular.
-5. En el celular acepta permisos de microfono.
-6. Presiona "Iniciar captura".
-7. Habla cerca del celular.
-8. En la app del PC el contador "Audio recibido" sube y el chip de estado dice "Celular conectado".
+2. Usa el modo rapido por defecto para subtitulos de baja latencia.
+3. Si quieres probar Whisper local, cambia el motor a "Local: Whisper en este PC"; si falta `ggml-base.bin`, espera la descarga automatica del modelo (~141 MB).
+4. Espera el QR (1-2 segundos despues de conectar al relay).
+5. Escanea el QR con el celular.
+6. En el celular acepta permisos de microfono.
+7. Presiona "Iniciar captura".
+8. Habla cerca del celular.
+9. En la app del PC el chip de estado dice "Celular conectado" y los subtitulos llegan al preview/overlay.
 
 Si pierdes la conexion, el cliente Tauri reintenta con backoff exponencial y, al reconectar, obtiene un nuevo session ID; el QR se regenera y debes volver a escanearlo en el celular.
 
@@ -222,7 +225,7 @@ Whisper local corre en el PC y no sube audio a un proveedor de transcripcion. El
 
 - Verifica que el PC tenga internet y acceso a Hugging Face.
 - La app descarga `ggml-base.bin` en `%APPDATA%\cl.aiep.subtitulos\models\ggml-base.bin`.
-- Mientras falta o falla la descarga, el QR fuerza `mode=speech` y el celular usa reconocimiento web como respaldo.
+- Mientras falta o falla la descarga, el QR se mantiene en `mode=speech` y el celular usa reconocimiento web.
 - Si ya tienes el archivo, puedes copiarlo manualmente a esa ruta y reiniciar la app.
 
 ### Audio no llega al PC
