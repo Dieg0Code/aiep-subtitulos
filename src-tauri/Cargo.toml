@@ -1,6 +1,6 @@
 [package]
 name = "aiep-subtitulos"
-version = "0.1.0"
+version = "0.1.2"
 description = "Subtitulos flotantes inclusivos para docentes AIEP"
 authors = ["AIEP"]
 edition = "2021"
