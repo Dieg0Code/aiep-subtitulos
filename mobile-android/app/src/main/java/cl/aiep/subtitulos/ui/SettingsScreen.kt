@@ -13,11 +13,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -35,6 +40,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -42,6 +49,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cl.aiep.subtitulos.CaptureMode
 import cl.aiep.subtitulos.R
+import cl.aiep.subtitulos.export.AiProviderDetector
+import cl.aiep.subtitulos.export.AiProviderMode
 import cl.aiep.subtitulos.prefs.AppPreferences
 import cl.aiep.subtitulos.ui.theme.AiepCream
 import cl.aiep.subtitulos.ui.theme.AiepCreamSoft
@@ -59,6 +68,10 @@ fun SettingsScreen() {
         .collectAsStateWithLifecycle(initialValue = AppPreferences.State())
 
     var relayUrl by remember { mutableStateOf(TextFieldValue(prefs.relayUrl)) }
+    var aiExpanded by remember { mutableStateOf(false) }
+    var aiAdvancedExpanded by remember { mutableStateOf(false) }
+    var tokenDraft by remember { mutableStateOf(TextFieldValue("")) }
+    var modelDraft by remember { mutableStateOf(TextFieldValue("")) }
     LaunchedEffect(prefs.relayUrl) {
         if (relayUrl.text != prefs.relayUrl) {
             relayUrl = TextFieldValue(prefs.relayUrl, selection = TextRange(prefs.relayUrl.length))
@@ -118,6 +131,56 @@ fun SettingsScreen() {
                 )
             }
 
+            SettingsCard(title = "IA experimental") {
+                AiTokenSettings(
+                    expanded = aiExpanded,
+                    advancedExpanded = aiAdvancedExpanded,
+                    tokenConfigured = prefs.aiToken.isNotBlank(),
+                    providerMode = prefs.aiProviderMode,
+                    detectedProvider = AiProviderDetector.detect(prefs.aiToken),
+                    modelOverride = prefs.aiModelOverride,
+                    tokenDraft = tokenDraft,
+                    modelDraft = modelDraft,
+                    onExpandedChange = { expanded ->
+                        aiExpanded = expanded
+                        if (expanded) {
+                            tokenDraft = TextFieldValue(
+                                prefs.aiToken,
+                                selection = TextRange(prefs.aiToken.length),
+                            )
+                            modelDraft = TextFieldValue(
+                                prefs.aiModelOverride,
+                                selection = TextRange(prefs.aiModelOverride.length),
+                            )
+                        }
+                    },
+                    onAdvancedChange = { aiAdvancedExpanded = it },
+                    onTokenChange = { tokenDraft = it },
+                    onModelChange = { modelDraft = it },
+                    onProviderModeChange = { mode ->
+                        coroutineScope.launch { AppPreferences.setAiProviderMode(context, mode) }
+                    },
+                    onSave = {
+                        coroutineScope.launch {
+                            AppPreferences.setAiToken(context, tokenDraft.text)
+                            AppPreferences.setAiModelOverride(context, modelDraft.text)
+                            aiExpanded = false
+                            aiAdvancedExpanded = false
+                        }
+                    },
+                    onClear = {
+                        coroutineScope.launch {
+                            AppPreferences.setAiToken(context, "")
+                            AppPreferences.setAiModelOverride(context, "")
+                            tokenDraft = TextFieldValue("")
+                            modelDraft = TextFieldValue("")
+                            aiExpanded = false
+                            aiAdvancedExpanded = false
+                        }
+                    },
+                )
+            }
+
             BatterySection()
 
             SettingsCard(title = stringResource(R.string.settings_section_about)) {
@@ -133,6 +196,220 @@ fun SettingsScreen() {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AiTokenSettings(
+    expanded: Boolean,
+    advancedExpanded: Boolean,
+    tokenConfigured: Boolean,
+    providerMode: AiProviderMode,
+    detectedProvider: AiProviderMode?,
+    modelOverride: String,
+    tokenDraft: TextFieldValue,
+    modelDraft: TextFieldValue,
+    onExpandedChange: (Boolean) -> Unit,
+    onAdvancedChange: (Boolean) -> Unit,
+    onTokenChange: (TextFieldValue) -> Unit,
+    onModelChange: (TextFieldValue) -> Unit,
+    onProviderModeChange: (AiProviderMode) -> Unit,
+    onSave: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val providerLabel = when {
+        providerMode != AiProviderMode.Auto -> "Proveedor: ${providerMode.label}"
+        detectedProvider != null -> "Proveedor detectado: ${detectedProvider.label}"
+        tokenConfigured -> "Proveedor no detectado"
+        else -> "No configurado"
+    }
+    val status = if (tokenConfigured) "Token guardado · $providerLabel" else providerLabel
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AiepCreamSoft, RoundedCornerShape(10.dp))
+            .clickable { onExpandedChange(!expanded) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "Token IA",
+                color = AiepInk,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = status,
+                color = AiepMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Text(
+            text = if (expanded) "Ocultar" else "Configurar",
+            color = AiepNavy,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+
+    if (expanded) {
+        TextField(
+            value = tokenDraft,
+            onValueChange = onTokenChange,
+            singleLine = true,
+            label = { Text("Token") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+            colors = aiepFieldColors(),
+        )
+        Text(
+            text = "Se guarda solo en este celular para generar PDF estudiable. Compatible con GitHub Models, OpenAI y Anthropic.",
+            color = AiepMuted,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AiepCreamSoft, RoundedCornerShape(10.dp))
+                .clickable { onAdvancedChange(!advancedExpanded) }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "Opciones avanzadas",
+                    color = AiepInk,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = if (modelOverride.isBlank()) providerLabel else "$providerLabel · modelo personalizado",
+                    color = AiepMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Text(
+                text = if (advancedExpanded) "Ocultar" else "Abrir",
+                color = AiepNavy,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        if (advancedExpanded) {
+            ProviderModePicker(
+                selected = providerMode,
+                onSelected = onProviderModeChange,
+            )
+            TextField(
+                value = modelDraft,
+                onValueChange = onModelChange,
+                singleLine = true,
+                label = { Text("Modelo opcional") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = aiepFieldColors(),
+            )
+            Text(
+                text = "Dejalo vacio para usar el modelo recomendado del proveedor.",
+                color = AiepMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            OutlinedButton(
+                onClick = onClear,
+                enabled = tokenConfigured || tokenDraft.text.isNotBlank(),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(text = "Borrar", color = AiepNavy)
+            }
+            Button(
+                onClick = onSave,
+                enabled = tokenDraft.text.trim().isNotBlank(),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AiepNavy,
+                    contentColor = AiepSurface,
+                    disabledContainerColor = AiepNavy.copy(alpha = 0.24f),
+                    disabledContentColor = AiepSurface.copy(alpha = 0.72f),
+                ),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(text = "Guardar")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProviderModePicker(
+    selected: AiProviderMode,
+    onSelected: (AiProviderMode) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            ProviderChip(
+                text = AiProviderMode.Auto.label,
+                selected = selected == AiProviderMode.Auto,
+                onClick = { onSelected(AiProviderMode.Auto) },
+                modifier = Modifier.weight(1f),
+            )
+            ProviderChip(
+                text = "GitHub",
+                selected = selected == AiProviderMode.GitHubModels,
+                onClick = { onSelected(AiProviderMode.GitHubModels) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            ProviderChip(
+                text = AiProviderMode.OpenAI.label,
+                selected = selected == AiProviderMode.OpenAI,
+                onClick = { onSelected(AiProviderMode.OpenAI) },
+                modifier = Modifier.weight(1f),
+            )
+            ProviderChip(
+                text = AiProviderMode.Anthropic.label,
+                selected = selected == AiProviderMode.Anthropic,
+                onClick = { onSelected(AiProviderMode.Anthropic) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProviderChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background = if (selected) AiepNavy else AiepCreamSoft
+    val foreground = if (selected) AiepSurface else AiepInk
+    Row(
+        modifier = modifier
+            .height(42.dp)
+            .background(background, RoundedCornerShape(10.dp))
+            .border(1.dp, AiepNavy.copy(alpha = if (selected) 0f else 0.16f), RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = text,
+            color = foreground,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

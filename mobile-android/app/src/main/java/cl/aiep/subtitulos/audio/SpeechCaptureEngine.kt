@@ -47,6 +47,7 @@ class SpeechCaptureEngine(
     override fun stop() {
         shouldRun = false
         mainHandler.post {
+            flushPendingFinal()
             runCatching { recognizer?.stopListening() }
             runCatching { recognizer?.destroy() }
             recognizer = null
@@ -137,19 +138,31 @@ class SpeechCaptureEngine(
         lastSentText = normalized
         CaptionPreviewBus.emit(normalized, isFinal)
         sendCaption(normalized, isFinal)
+        // Persist every visible caption (partial + final). If the recognizer dies
+        // mid-phrase without ever delivering onResults, the last partial the user
+        // saw is already on disk. mergeLine in the repo dedupes by overlap so this
+        // is idempotent — repeated partials of the same phrase grow one .md line.
+        onFinalCaption?.invoke(normalized, System.currentTimeMillis())
         if (isFinal) {
-            onFinalCaption?.invoke(normalized, System.currentTimeMillis())
             lastSentText = ""
         }
     }
 
     private fun scheduleRestart() {
+        flushPendingFinal()
         if (!shouldRun) return
         mainHandler.postDelayed({
             runCatching { recognizer?.destroy() }
             recognizer = null
             if (shouldRun) startSession()
         }, 300L)
+    }
+
+    private fun flushPendingFinal() {
+        val pending = lastSentText
+        if (pending.isEmpty()) return
+        lastSentText = ""
+        onFinalCaption?.invoke(pending, System.currentTimeMillis())
     }
 
     private fun sendCaption(text: String, isFinal: Boolean) {

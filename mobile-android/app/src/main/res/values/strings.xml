@@ -25,6 +25,7 @@
 
     <string name="action_start">Iniciar micrófono</string>
     <string name="action_stop">Detener micrófono</string>
+    <string name="action_download_pdf">Descargar PDF</string>
 
     <string name="hint_lock_screen">Bloquea la pantalla y habla. La notificación persistente mantiene el micrófono activo.</string>
 

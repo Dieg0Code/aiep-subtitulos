@@ -27,6 +27,7 @@ import cl.aiep.subtitulos.R
 import cl.aiep.subtitulos.ui.theme.AiepCreamSoft
 import cl.aiep.subtitulos.ui.theme.AiepLine
 import cl.aiep.subtitulos.ui.theme.AiepNavy
+import cl.aiep.subtitulos.ui.theme.AiepRed
 import cl.aiep.subtitulos.ui.theme.AiepSurface
 
 enum class AiepTab(val route: String, val labelRes: Int, val iconRes: Int) {
@@ -78,8 +79,8 @@ private fun NavPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val bg = if (selected) AiepNavy.copy(alpha = 0.10f) else AiepCreamSoft.copy(alpha = 0.0f)
-    val fg = if (selected) AiepNavy else AiepNavy.copy(alpha = 0.62f)
+    val bg = if (selected) AiepRed.copy(alpha = 0.08f) else AiepCreamSoft.copy(alpha = 0.0f)
+    val fg = if (selected) AiepRed else AiepNavy.copy(alpha = 0.62f)
     val label = stringResource(id = tab.labelRes)
     Row(
         modifier = modifier

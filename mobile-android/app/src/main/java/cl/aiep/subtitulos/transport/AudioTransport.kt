@@ -4,6 +4,7 @@ import cl.aiep.subtitulos.audio.AudioFrame
 
 enum class TransportId {
     CloudRelay,
+    LocalOnly,
 }
 
 enum class TransportAvailability {

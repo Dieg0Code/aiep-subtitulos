@@ -74,8 +74,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             AiepSubtitulosTheme {
                 AiepNavRoot(
-                    onStart = { relayUrl, sessionId, mode, localSessionId ->
-                        startAfterPermissions(relayUrl, sessionId, mode, localSessionId)
+                    onStart = { relayUrl, sessionId, mode, localSessionId, localOnly ->
+                        startAfterPermissions(relayUrl, sessionId, mode, localSessionId, localOnly)
                     },
                     onStop = {
                         stopService(Intent(this, MicrophoneStreamingService::class.java))
@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
         sessionId: String,
         mode: CaptureMode,
         localSessionId: String,
+        localOnly: Boolean,
     ) {
         pendingStart = {
             val intent = MicrophoneStreamingService.startIntent(
@@ -132,6 +133,7 @@ class MainActivity : ComponentActivity() {
                 sessionId,
                 mode,
                 localSessionId,
+                localOnly,
             )
             ContextCompat.startForegroundService(this, intent)
         }
@@ -156,7 +158,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AiepNavRoot(
-    onStart: (relayUrl: String, sessionId: String, mode: CaptureMode, localSessionId: String) -> Unit,
+    onStart: (relayUrl: String, sessionId: String, mode: CaptureMode, localSessionId: String, localOnly: Boolean) -> Unit,
     onStop: () -> Unit,
     onScanQr: ((QrPayload) -> Unit) -> Unit,
 ) {

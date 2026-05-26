@@ -1,5 +1,6 @@
 package cl.aiep.subtitulos.ui
 
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -45,13 +49,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -59,7 +67,6 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,6 +76,10 @@ import cl.aiep.subtitulos.audio.AudioLevelBus
 import cl.aiep.subtitulos.audio.CaptionPacer
 import cl.aiep.subtitulos.audio.CaptionPacerSnapshot
 import cl.aiep.subtitulos.audio.CaptionPreviewBus
+import cl.aiep.subtitulos.export.AiProviderClient
+import cl.aiep.subtitulos.export.AiProviderConfig
+import cl.aiep.subtitulos.export.PdfShare
+import cl.aiep.subtitulos.export.StudyPdfGenerator
 import cl.aiep.subtitulos.prefs.AppPreferences
 import cl.aiep.subtitulos.qr.QrPayload
 import cl.aiep.subtitulos.sessions.ActiveSessionTracker
@@ -84,14 +95,15 @@ import cl.aiep.subtitulos.ui.theme.AiepNavy
 import cl.aiep.subtitulos.ui.theme.AiepNavyDeep
 import cl.aiep.subtitulos.ui.theme.AiepRed
 import cl.aiep.subtitulos.ui.theme.AiepSurface
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SessionDetailScreen(
     sessionId: String,
     onBack: () -> Unit,
-    onStart: (relayUrl: String, sessionId: String, mode: CaptureMode, localSessionId: String) -> Unit,
+    onStart: (relayUrl: String, sessionId: String, mode: CaptureMode, localSessionId: String, localOnly: Boolean) -> Unit,
     onStop: () -> Unit,
     onScanQr: ((QrPayload) -> Unit) -> Unit,
 ) {
@@ -111,9 +123,12 @@ fun SessionDetailScreen(
     var sessionCode by remember { mutableStateOf(TextFieldValue("")) }
     var showManualCodeSheet by remember(sessionId) { mutableStateOf(false) }
     var manualCodeDraft by remember(sessionId) { mutableStateOf(TextFieldValue("")) }
+    var localOnly by remember(sessionId) { mutableStateOf(false) }
+    var pdfBusy by remember(sessionId) { mutableStateOf(false) }
+    var pdfStatus by remember(sessionId) { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
 
-    val canStart = sessionCode.text.trim().length == 6 && !otherActive && meta != null
+    val canStart = !otherActive && meta != null && (localOnly || sessionCode.text.trim().length == 6)
     val onQrPayload: (QrPayload) -> Unit = { payload ->
         sessionCode = textFieldValueAtEnd(payload.sessionId.uppercase().take(6))
         showManualCodeSheet = false
@@ -128,6 +143,12 @@ fun SessionDetailScreen(
     LaunchedEffect(streaming, sessionCode.text) {
         if (streaming || sessionCode.text.trim().length == 6) {
             showManualCodeSheet = false
+        }
+    }
+
+    LaunchedEffect(localOnly, streaming, meta?.mode) {
+        if (localOnly && !streaming && meta != null && meta.mode != CaptureMode.Speech) {
+            repo.updateSessionMode(sessionId, CaptureMode.Speech)
         }
     }
 
@@ -148,30 +169,27 @@ fun SessionDetailScreen(
                 .fillMaxSize()
                 .padding(inner)
                 .verticalScroll(scrollState)
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             PrimaryActionCard(
                 sessionId = sessionCode,
                 streaming = streaming,
+                localOnly = localOnly,
                 onManualClick = {
-                    if (!streaming) {
+                    if (!streaming && !localOnly) {
                         manualCodeDraft = textFieldValueAtEnd(sessionCode.text.trim().uppercase())
                         showManualCodeSheet = true
                     }
                 },
                 onScanRequest = { onScanQr(onQrPayload) },
+                onLocalOnlyChange = { enabled ->
+                    if (!streaming) {
+                        localOnly = enabled
+                        if (enabled) showManualCodeSheet = false
+                    }
+                },
             )
-
-            if (meta != null) {
-                ModeCard(
-                    selectedMode = meta.mode,
-                    enabled = !streaming,
-                    onModeChange = { mode ->
-                        coroutineScope.launch { repo.updateSessionMode(sessionId, mode) }
-                    },
-                )
-            }
 
             if (otherActive && activeOther != null) {
                 BlockedByOtherSessionNotice(otherName = activeOther.name)
@@ -184,8 +202,9 @@ fun SessionDetailScreen(
                     if (streaming) {
                         onStop()
                     } else if (canStart) {
-                        val code = sessionCode.text.trim().uppercase()
-                        onStart(prefs.relayUrl, code, meta!!.mode, sessionId)
+                        val code = if (localOnly) "" else sessionCode.text.trim().uppercase()
+                        val mode = if (localOnly) CaptureMode.Speech else meta!!.mode
+                        onStart(prefs.relayUrl, code, mode, sessionId, localOnly)
                     }
                 },
             )
@@ -201,7 +220,65 @@ fun SessionDetailScreen(
                 streaming = streaming,
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (meta != null && !streaming && meta.mode == CaptureMode.Speech && meta.captionCount > 0) {
+                StudyPdfAction(
+                    busy = pdfBusy,
+                    status = pdfStatus,
+                    onClick = {
+                        coroutineScope.launch {
+                            pdfBusy = true
+                            pdfStatus = "Preparando PDF..."
+                            val rawMarkdown = runCatching { repo.readMarkdown(sessionId) }
+                                .getOrDefault("")
+                            val aiConfig = AiProviderConfig(
+                                token = prefs.aiToken.trim(),
+                                providerMode = prefs.aiProviderMode,
+                                modelOverride = prefs.aiModelOverride,
+                            )
+                            val studyMarkdown = if (aiConfig.hasToken) {
+                                runCatching {
+                                    AiProviderClient(aiConfig)
+                                        .createStudyMarkdown(meta.name, rawMarkdown)
+                                }.onFailure { error ->
+                                    Toast.makeText(
+                                        context,
+                                        "${error.message ?: "No se pudo usar IA"}. Se generara PDF crudo.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }.getOrNull()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Sin token IA: se generara PDF crudo AIEP.",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                null
+                            }
+
+                            runCatching {
+                                val file = withContext(Dispatchers.IO) {
+                                    val generator = StudyPdfGenerator(context)
+                                    if (studyMarkdown.isNullOrBlank()) {
+                                        generator.generateRaw(meta.name, rawMarkdown)
+                                    } else {
+                                        generator.generate(meta.name, studyMarkdown)
+                                    }
+                                }
+                                PdfShare.share(context, file)
+                            }.onFailure { error ->
+                                Toast.makeText(
+                                    context,
+                                    error.message ?: "No se pudo preparar el PDF",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                            pdfBusy = false
+                            pdfStatus = null
+                        }
+                    },
+                )
+            }
+
         }
     }
 
@@ -219,22 +296,95 @@ fun SessionDetailScreen(
 }
 
 @Composable
-private fun LiveCaptionBlock(text: String) {
+private fun StudyPdfAction(
+    busy: Boolean,
+    status: String?,
+    onClick: () -> Unit,
+) {
     Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Button(
+            onClick = onClick,
+            enabled = !busy,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AiepNavy,
+                contentColor = AiepSurface,
+                disabledContainerColor = AiepNavy.copy(alpha = 0.32f),
+                disabledContentColor = AiepSurface.copy(alpha = 0.7f),
+            ),
+            elevation = ButtonDefaults.buttonElevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp,
+                focusedElevation = 0.dp,
+                hoveredElevation = 0.dp,
+                disabledElevation = 0.dp,
+            ),
+            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.action_download_pdf),
+                    color = AiepSurface,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_sparkles_24),
+                    contentDescription = null,
+                    tint = if (busy) AiepSurface.copy(alpha = 0.6f) else AiepAmber,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        if (status != null) {
+            Text(
+                text = status,
+                color = AiepMuted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LiveCaptionBlock(snapshot: CaptionPacerSnapshot) {
+    val annotated = remember(snapshot.committedTail, snapshot.currentTail) {
+        buildAnnotatedString {
+            val committed = snapshot.committedTail
+            val current = snapshot.currentTail
+            if (committed.isNotEmpty()) {
+                withStyle(SpanStyle(color = AiepSurface)) { append(committed) }
+            }
+            if (current.isNotEmpty()) {
+                if (committed.isNotEmpty()) append(" ")
+                withStyle(SpanStyle(color = AiepSurface.copy(alpha = 0.65f))) { append(current) }
+            }
+        }
+    }
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(148.dp)
-            .background(AiepNavyDeep, RoundedCornerShape(10.dp))
+            .height(260.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(AiepNavyDeep)
             .border(1.dp, AiepNavy.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.Bottom,
     ) {
         Text(
-            text = text,
-            color = AiepSurface,
+            text = annotated,
             style = MaterialTheme.typography.titleMedium,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .wrapContentHeight(align = Alignment.Bottom, unbounded = true),
         )
     }
 }
@@ -323,8 +473,10 @@ private fun statusLine(meta: SessionMeta): String {
 private fun PrimaryActionCard(
     sessionId: TextFieldValue,
     streaming: Boolean,
+    localOnly: Boolean,
     onManualClick: () -> Unit,
     onScanRequest: () -> Unit,
+    onLocalOnlyChange: (Boolean) -> Unit,
 ) {
     SurfaceCard {
         Column(
@@ -335,12 +487,19 @@ private fun PrimaryActionCard(
         ) {
             SectionLabel(text = "Conexión")
 
-            ScanQrButton(enabled = !streaming, onClick = onScanRequest)
+            ScanQrButton(enabled = !streaming && !localOnly, onClick = onScanRequest)
 
             ManualCodeSummaryRow(
                 code = sessionId.text.trim().uppercase(),
                 streaming = streaming,
+                localOnly = localOnly,
                 onClick = onManualClick,
+            )
+
+            LocalOnlySwitchRow(
+                checked = localOnly,
+                enabled = !streaming,
+                onCheckedChange = onLocalOnlyChange,
             )
         }
     }
@@ -350,9 +509,11 @@ private fun PrimaryActionCard(
 private fun ManualCodeSummaryRow(
     code: String,
     streaming: Boolean,
+    localOnly: Boolean,
     onClick: () -> Unit,
 ) {
     val status = when {
+        localOnly -> "Desactivado en modo celular"
         streaming -> "Código bloqueado durante la grabación"
         code.length == 6 -> "Código listo"
         else -> "No configurado"
@@ -361,7 +522,7 @@ private fun ManualCodeSummaryRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(AiepCreamSoft, RoundedCornerShape(10.dp))
-            .clickable(enabled = !streaming, onClick = onClick)
+            .clickable(enabled = !streaming && !localOnly, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -394,9 +555,61 @@ private fun ManualCodeSummaryRow(
         }
         Text(
             text = if (code.length == 6) "Editar" else "+",
-            color = AiepNavy,
+            color = if (localOnly) AiepMuted else AiepNavy,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun LocalOnlySwitchRow(
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = AiepCreamSoft,
+                shape = RoundedCornerShape(10.dp),
+            )
+            .border(
+                width = 1.dp,
+                color = AiepLine,
+                shape = RoundedCornerShape(10.dp),
+            )
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "Solo en este celular",
+                color = AiepInk,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Transcribe y guarda en esta app, sin conectar al PC.",
+                color = AiepMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = AiepSurface,
+                checkedTrackColor = AiepRed,
+                checkedBorderColor = AiepRed,
+                uncheckedThumbColor = AiepSurface,
+                uncheckedTrackColor = AiepMuted.copy(alpha = 0.36f),
+                uncheckedBorderColor = AiepLine,
+            ),
         )
     }
 }
@@ -542,81 +755,6 @@ private fun ScanQrButton(enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ModeCard(
-    selectedMode: CaptureMode,
-    enabled: Boolean,
-    onModeChange: (CaptureMode) -> Unit,
-) {
-    SurfaceCard {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            SectionLabel(text = stringResource(R.string.mode_title))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(color = AiepCreamSoft, shape = RoundedCornerShape(12.dp))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                ModeSegment(
-                    title = stringResource(R.string.mode_speech),
-                    caption = stringResource(R.string.mode_speech_caption),
-                    selected = selectedMode == CaptureMode.Speech,
-                    enabled = enabled,
-                    onClick = { onModeChange(CaptureMode.Speech) },
-                    modifier = Modifier.weight(1f),
-                )
-                ModeSegment(
-                    title = stringResource(R.string.mode_whisper),
-                    caption = stringResource(R.string.mode_whisper_caption),
-                    selected = selectedMode == CaptureMode.Pcm,
-                    enabled = enabled,
-                    onClick = { onModeChange(CaptureMode.Pcm) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModeSegment(
-    title: String,
-    caption: String,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val bg = if (selected) AiepSurface else Color.Transparent
-    val border = if (selected) AiepNavy else Color.Transparent
-    val alpha = if (enabled) 1f else 0.55f
-    Column(
-        modifier = modifier
-            .background(color = bg, shape = RoundedCornerShape(9.dp))
-            .border(width = 1.dp, color = border, shape = RoundedCornerShape(9.dp))
-            .clickable(enabled = enabled && !selected, onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = title,
-            color = (if (selected) AiepNavy else AiepMuted).copy(alpha = alpha),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = caption,
-            color = AiepMuted.copy(alpha = alpha),
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
-}
-
-@Composable
 private fun BlockedByOtherSessionNotice(otherName: String) {
     SurfaceCard {
         Row(
@@ -733,11 +871,11 @@ private fun TranscriptPreview(
 ) {
     if (meta == null) return
     var lines by remember(meta.captionCount) { mutableStateOf<List<String>>(emptyList()) }
-    var expanded by remember { mutableStateOf(false) }
-    var fullText by remember(meta.captionCount, expanded) { mutableStateOf<String?>(null) }
+    var showFullSheet by remember { mutableStateOf(false) }
+    var fullText by remember(meta.captionCount, showFullSheet) { mutableStateOf<String?>(null) }
     val liveCaption by CaptionPreviewBus.preview.collectAsStateWithLifecycle()
     val showLiveCaption = streaming && meta.mode == CaptureMode.Speech
-    val captionPacer = remember(sessionId) { CaptionPacer(maxVisibleWords = 18) }
+    val captionPacer = remember(sessionId) { CaptionPacer(maxVisibleWords = 40) }
     var pacedCaption by remember(sessionId) { mutableStateOf(CaptionPacerSnapshot()) }
 
     LaunchedEffect(meta.captionCount, sessionId, streaming) {
@@ -746,8 +884,8 @@ private fun TranscriptPreview(
         }
     }
 
-    LaunchedEffect(expanded, meta.captionCount, sessionId, streaming) {
-        if (expanded && !streaming) fullText = repo.readMarkdown(sessionId)
+    LaunchedEffect(showFullSheet, meta.captionCount, sessionId, streaming) {
+        if (showFullSheet && !streaming) fullText = repo.readMarkdown(sessionId)
     }
 
     LaunchedEffect(showLiveCaption) {
@@ -758,16 +896,9 @@ private fun TranscriptPreview(
         }
     }
 
-    LaunchedEffect(showLiveCaption, liveCaption.text) {
+    LaunchedEffect(showLiveCaption, liveCaption.text, liveCaption.isFinal) {
         if (showLiveCaption && liveCaption.text.isNotBlank()) {
-            pacedCaption = captionPacer.set(liveCaption.text)
-        }
-    }
-
-    LaunchedEffect(showLiveCaption) {
-        while (showLiveCaption) {
-            delay(300L)
-            pacedCaption = captionPacer.tick()
+            pacedCaption = captionPacer.set(liveCaption.text, isFinal = liveCaption.isFinal)
         }
     }
 
@@ -788,9 +919,15 @@ private fun TranscriptPreview(
                 return@SurfaceCard
             }
             if (showLiveCaption) {
-                LiveCaptionBlock(
-                    text = pacedCaption.visibleText.ifBlank { "Escuchando..." },
-                )
+                val snapshotForUi = if (pacedCaption.visibleText.isBlank()) {
+                    CaptionPacerSnapshot(
+                        visibleText = "Escuchando...",
+                        committedTail = "Escuchando...",
+                    )
+                } else {
+                    pacedCaption
+                }
+                LiveCaptionBlock(snapshot = snapshotForUi)
                 return@SurfaceCard
             }
             if (streaming) {
@@ -809,45 +946,86 @@ private fun TranscriptPreview(
                 )
                 return@SurfaceCard
             }
-            if (!expanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    lines.forEach { line ->
-                        Text(text = line, color = AiepInk, style = MaterialTheme.typography.bodySmall)
-                    }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                lines.forEach { line ->
+                    Text(text = line, color = AiepInk, style = MaterialTheme.typography.bodySmall)
                 }
+            }
+            Text(
+                text = "Ver transcripción completa",
+                color = AiepNavy,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .clickable { showFullSheet = true }
+                    .padding(top = 4.dp),
+            )
+        }
+    }
+
+    if (showFullSheet) {
+        FullTranscriptSheet(
+            title = meta.name,
+            markdown = fullText,
+            onDismiss = { showFullSheet = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FullTranscriptSheet(
+    title: String,
+    markdown: String?,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = AiepSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "Ver transcripción completa",
-                    color = AiepNavy,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier
-                        .clickable { expanded = true }
-                        .padding(top = 4.dp),
+                    text = "Transcripción",
+                    color = AiepMuted,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
                 )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                        .background(AiepCreamSoft, RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                ) {
+                Text(
+                    text = title,
+                    color = AiepNavy,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp, max = 520.dp)
+                    .background(AiepCreamSoft, RoundedCornerShape(10.dp))
+                    .padding(14.dp),
+            ) {
+                if (markdown == null) {
                     Text(
-                        text = fullText.orEmpty(),
+                        text = "Cargando…",
+                        color = AiepMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    Text(
+                        text = markdown,
                         color = AiepInk,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.verticalScroll(rememberScrollState()),
                     )
                 }
-                Text(
-                    text = "Ocultar",
-                    color = AiepNavy,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier
-                        .clickable { expanded = false }
-                        .padding(top = 4.dp),
-                )
             }
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }

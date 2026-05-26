@@ -30,6 +30,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +69,7 @@ import cl.aiep.subtitulos.ui.theme.AiepLine
 import cl.aiep.subtitulos.ui.theme.AiepMuted
 import cl.aiep.subtitulos.ui.theme.AiepNavy
 import cl.aiep.subtitulos.ui.theme.AiepNavyDeep
+import cl.aiep.subtitulos.ui.theme.AiepRed
 import cl.aiep.subtitulos.ui.theme.AiepSurface
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -97,6 +100,11 @@ fun SessionsListScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(width = 52.dp, height = 4.dp)
+                    .background(AiepRed, RoundedCornerShape(999.dp)),
+            )
             Text(
                 text = "AIEP Subtítulos",
                 color = AiepNavy,
@@ -189,7 +197,12 @@ private fun CreateSessionCard(onClick: () -> Unit) {
                 .background(AiepNavy, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = "+", color = AiepSurface, fontWeight = FontWeight.Black, fontSize = 24.sp)
+            Icon(
+                painter = painterResource(id = R.drawable.ic_mic_24),
+                contentDescription = null,
+                tint = AiepSurface,
+                modifier = Modifier.size(24.dp),
+            )
         }
         Column(
             modifier = Modifier.weight(1f),
@@ -224,10 +237,18 @@ private fun SessionCard(
             .fillMaxWidth()
             .heightIn(min = 140.dp)
             .background(AiepSurface, RoundedCornerShape(14.dp))
-            .border(1.dp, AiepLine, RoundedCornerShape(14.dp))
+            .border(1.dp, if (isActive) AiepRed.copy(alpha = 0.34f) else AiepLine, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(14.dp),
     ) {
+        if (isActive) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(width = 38.dp, height = 4.dp)
+                    .background(AiepRed, RoundedCornerShape(999.dp)),
+            )
+        }
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             if (isActive) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

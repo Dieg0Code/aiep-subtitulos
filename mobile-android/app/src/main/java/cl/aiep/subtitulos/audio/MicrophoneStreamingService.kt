@@ -22,8 +22,10 @@ import cl.aiep.subtitulos.LOG_TAG
 import cl.aiep.subtitulos.R
 import cl.aiep.subtitulos.sessions.ActiveSessionTracker
 import cl.aiep.subtitulos.sessions.SessionsRepository
+import cl.aiep.subtitulos.transport.AudioTransport
 import cl.aiep.subtitulos.transport.CloudRelayTransport
 import cl.aiep.subtitulos.transport.ConnectionResult
+import cl.aiep.subtitulos.transport.LocalOnlyTransport
 import cl.aiep.subtitulos.transport.SessionDescriptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,15 +33,19 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MicrophoneStreamingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val transport = CloudRelayTransport()
+    private var transport: AudioTransport = CloudRelayTransport()
     private var engine: CaptureEngine? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var session: SessionDescriptor? = null
     private var mode: CaptureMode = CaptureMode.Speech
+    private var localOnly = false
     private var localSessionId: String? = null
     private var reconnectJob: Job? = null
     private lateinit var repository: SessionsRepository
@@ -55,7 +61,8 @@ class MicrophoneStreamingService : Service() {
         val sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val parsedMode = CaptureMode.fromQueryValue(intent?.getStringExtra(EXTRA_MODE))
         val incomingLocalSessionId = intent?.getStringExtra(EXTRA_LOCAL_SESSION_ID)
-        if (sessionId.isBlank()) {
+        val incomingLocalOnly = intent?.getBooleanExtra(EXTRA_LOCAL_ONLY, false) == true
+        if (sessionId.isBlank() && !incomingLocalOnly) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -65,16 +72,28 @@ class MicrophoneStreamingService : Service() {
             return START_NOT_STICKY
         }
 
-        session = SessionDescriptor(relayUrl, sessionId)
-        mode = parsedMode
+        localOnly = incomingLocalOnly
+        transport = if (localOnly) LocalOnlyTransport() else CloudRelayTransport()
+        session = SessionDescriptor(relayUrl, if (sessionId.isBlank()) LOCAL_ONLY_SESSION_ID else sessionId)
+        mode = if (localOnly) CaptureMode.Speech else parsedMode
         localSessionId = incomingLocalSessionId
         incomingLocalSessionId?.let { localId ->
             ActiveSessionTracker.setActive(localId)
-            scope.launch { repository.updateSessionMode(localId, parsedMode, relaySessionId = sessionId) }
+            scope.launch {
+                repository.updateSessionMode(
+                    id = localId,
+                    mode = mode,
+                    relaySessionId = if (localOnly) null else sessionId,
+                )
+            }
         }
-        promoteToForeground("Conectando al relay…")
+        promoteToForeground(if (localOnly) "Transcribiendo en este celular" else "Conectando al relay…")
         acquireWakeLock()
-        scheduleReconnect()
+        if (localOnly) {
+            startEngine()
+        } else {
+            scheduleReconnect()
+        }
         return START_STICKY
     }
 
@@ -88,6 +107,15 @@ class MicrophoneStreamingService : Service() {
         }
         scope.launch { transport.close() }
         releaseWakeLock()
+        // Drain pending writes (caption persistence + mark-stopped) before cancelling
+        // the scope. Without this, in-flight appendFinalCaption coroutines launched
+        // from the recognition flush would be cancelled mid-IO and the user's last
+        // visible caption could be lost. Bounded so onDestroy can't hang the system.
+        runBlocking {
+            withTimeoutOrNull(3_000L) {
+                scope.coroutineContext.job.children.toList().forEach { it.join() }
+            }
+        }
         scope.cancel()
         super.onDestroy()
     }
@@ -213,6 +241,8 @@ class MicrophoneStreamingService : Service() {
         private const val EXTRA_SESSION_ID = "sessionId"
         private const val EXTRA_MODE = "mode"
         private const val EXTRA_LOCAL_SESSION_ID = "localSessionId"
+        private const val EXTRA_LOCAL_ONLY = "localOnly"
+        private const val LOCAL_ONLY_SESSION_ID = "LOCAL"
 
         fun startIntent(
             context: Context,
@@ -220,11 +250,13 @@ class MicrophoneStreamingService : Service() {
             sessionId: String,
             mode: CaptureMode,
             localSessionId: String?,
+            localOnly: Boolean = false,
         ): Intent =
             Intent(context, MicrophoneStreamingService::class.java).apply {
                 putExtra(EXTRA_RELAY_URL, relayUrl)
                 putExtra(EXTRA_SESSION_ID, sessionId)
                 putExtra(EXTRA_MODE, mode.queryValue)
+                putExtra(EXTRA_LOCAL_ONLY, localOnly)
                 if (localSessionId != null) putExtra(EXTRA_LOCAL_SESSION_ID, localSessionId)
             }
     }
