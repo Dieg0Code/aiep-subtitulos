@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AIEP Subtitulos</string>
+    <string name="app_tagline">Micrófono nativo · clase presencial</string>
+
+    <string name="status_idle">Listo para conectar</string>
+    <string name="status_connecting">Conectando…</string>
+    <string name="status_online">Transmitiendo</string>
+    <string name="status_retrying">Reintentando…</string>
+
+    <string name="scan_qr_title">Escanear QR del PC</string>
+    <string name="scan_qr_subtitle">Apunta a la pantalla del docente</string>
+
+    <string name="manual_code_label">Código de 6 caracteres</string>
+    <string name="manual_code_helper">Lo encontrarás bajo el QR del PC</string>
+
+    <string name="mode_title">Reconocimiento</string>
+    <string name="mode_speech">Speech</string>
+    <string name="mode_speech_caption">Rápido · Recomendado</string>
+    <string name="mode_whisper">Whisper</string>
+    <string name="mode_whisper_caption">Local en el PC</string>
+
+    <string name="advanced_toggle">Configuración avanzada</string>
+    <string name="relay_label">Servidor relay</string>
+
+    <string name="action_start">Iniciar micrófono</string>
+    <string name="action_stop">Detener micrófono</string>
+
+    <string name="hint_lock_screen">Bloquea la pantalla y habla. La notificación persistente mantiene el micrófono activo.</string>
+
+    <string name="badge_coming_soon">Próximamente</string>
+
+    <string name="scan_qr_error_unavailable">Instala Google Play Services para escanear</string>
+    <string name="scan_qr_error_invalid">QR no reconocido</string>
+    <string name="scan_qr_session_loaded">Código %1$s cargado</string>
+
+    <string name="battery_banner_text">Para que el subtítulo no se corte con la pantalla bloqueada, excluye esta app del ahorro de batería.</string>
+    <string name="battery_banner_activate">Activar</string>
+    <string name="battery_banner_dismiss">Descartar</string>
+
+    <string name="nav_sessions">Sesiones</string>
+    <string name="nav_settings">Ajustes</string>
+
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_section_recognition">Reconocimiento</string>
+    <string name="settings_mode_helper">Las nuevas sesiones usarán este modo por defecto.</string>
+    <string name="settings_section_connection">Conexión</string>
+    <string name="settings_relay_helper">URL del relay. Cámbiala solo si tu organización usa un servidor distinto.</string>
+    <string name="settings_section_battery">Ahorro de batería</string>
+    <string name="settings_battery_on">Optimización activa · podría cortar la transcripción con pantalla bloqueada.</string>
+    <string name="settings_battery_off">Esta app está excluida del optimizador de batería.</string>
+    <string name="settings_battery_action">Abrir ajustes</string>
+    <string name="settings_section_about">Acerca de</string>
+    <string name="settings_about_body">AIEP Subtítulos · transcripción accesible en vivo para clases. Aula presencial.</string>
+    <string name="settings_version">Versión %1$s</string>
+</resources>

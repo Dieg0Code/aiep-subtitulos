@@ -83,6 +83,10 @@ async function renderControl(root: HTMLDivElement) {
             <span>Preparando QR...</span>
           </div>
         </div>
+        <div class="session-code-card" id="session-code-card" aria-live="polite">
+          <span>Código</span>
+          <strong id="session-code">------</strong>
+        </div>
         <p class="qr-url" id="mobile-url">Preparando enlace...</p>
         <p class="qr-status" id="qr-status">Conectando al relay...</p>
       </section>
@@ -611,8 +615,13 @@ async function updateMobileUrl(url: string) {
   const qrCanvas = document.querySelector<HTMLCanvasElement>("#qr-code");
   const qrFrame = document.querySelector<HTMLDivElement>("#qr-frame");
   const statusEl = document.querySelector<HTMLParagraphElement>("#qr-status");
+  const sessionCodeEl = document.querySelector<HTMLElement>("#session-code");
+  const sessionCodeCard = document.querySelector<HTMLDivElement>("#session-code-card");
+  const sessionCode = extractSessionCode(url);
 
   if (urlEl) urlEl.textContent = url;
+  if (sessionCodeEl) sessionCodeEl.textContent = sessionCode ?? "------";
+  sessionCodeCard?.classList.toggle("has-code", sessionCode != null);
   if (qrCanvas && url.startsWith("https://")) {
     await QRCode.toCanvas(qrCanvas, url, {
       width: 256,
@@ -642,6 +651,29 @@ async function setBackendCaptureMode(mode: "speech" | "pcm") {
   } catch (error) {
     console.warn("No se pudo cambiar el modo de captura", error);
     return false;
+  }
+}
+
+function extractSessionCode(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const candidates = [
+      parsed.searchParams.get("session"),
+      parsed.searchParams.get("sessionId"),
+      parsed.searchParams.get("s"),
+      parsed.searchParams.get("sid"),
+      parsed.searchParams.get("cid"),
+    ];
+    const fromQuery = candidates.find((value) => value && /^[a-z0-9]{6}$/i.test(value));
+    if (fromQuery) return fromQuery.toUpperCase();
+
+    const fromPath = parsed.pathname
+      .split("/")
+      .reverse()
+      .find((part) => /^[a-z0-9]{6}$/i.test(part));
+    return fromPath ? fromPath.toUpperCase() : null;
+  } catch {
+    return null;
   }
 }
 

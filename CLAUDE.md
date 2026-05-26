@@ -29,9 +29,10 @@ Dev ports started by `npm run tauri dev`:
 
 ## Architecture
 
-Two components:
+Three components:
 1. **Tauri desktop app** in `src/` (TS/Vite) and `src-tauri/` (Rust). The Rust side acts purely as a WebSocket **client** of a remote relay, plus owns the overlay window.
 2. **Go WebSocket relay** in `server/`, deployed on Railway. It accepts host (PC) and guest (phone) connections, hands out short session IDs, and forwards all frames (text JSON + binary audio) between them.
+3. **Native Android guest** in `mobile-android/` (Kotlin + Compose). Optional, additive alternative to the `mobile.html` browser path — used when the teacher needs reliable mic capture with the phone locked. The browser QR + `mobile.html` flow must keep working regardless.
 
 ```
 phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Rust (client)
@@ -76,6 +77,12 @@ phone Chrome ─wss audio opus──> Railway Go relay ─wss───> Tauri Ru
 - **`server/hub.go`** — session store. Generates 6-char IDs from a 30-char alphabet (no `0/O/1/I/L` confusion). Pairing model: host creates session on connect, guest joins via `?s=<id>`. Concurrent writes to the host conn (initial `session` msg + guest's status/relay) are serialized via `Session.WriteHost` (mutex-guarded). Binary and text frames pass through untouched. Max frame size 1 MiB.
 - **`server/mobile.html`** — the embedded phone UI. The PC selects `mode=pcm|speech` in the QR URL; the phone only displays which mode is active. PCM mode captures 16 kHz i16 mono chunks with `AudioWorklet` and sends binary WS to `/ws/guest?s=<id>`; speech mode uses Web Speech and sends caption JSON as fallback. Includes silent-audio AudioContext loop + wake lock + visibility-restart to survive screen-off as best as a browser can.
 - **`server/hub_test.go`** — 10 unit tests covering ID generation, pairing, relay direction, second-guest rejection (1008), 404/400 routing, and host-disconnect cleanup. CI runs these with `-race` on Linux.
+
+### Android guest (`mobile-android/`)
+
+- Kotlin + Jetpack Compose. ForegroundService with `foregroundServiceType="microphone"`, `AudioRecord` PCM mono 16 kHz, OkHttp WebSocket.
+- Connects as guest: `wss://aiep-relay-production.up.railway.app/ws/guest?s=<SESSION_ID>` and streams raw binary PCM frames (no base64). Same wire format as PCM-mode `mobile.html`.
+- Build: `cd mobile-android; .\gradlew.bat assembleDebug` (or `installDebug`). APK lands at `app/build/outputs/apk/debug/app-debug.apk`. Test on a physical device, not an emulator; verify with screen locked for 2+ minutes.
 
 ### CI/CD
 

@@ -265,6 +265,38 @@ button svg {
   display: none;
 }
 
+.session-code-card {
+  display: grid;
+  gap: 4px;
+  width: min(100%, 218px);
+  margin: 12px auto 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 59, 112, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.session-code-card span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.session-code-card strong {
+  color: var(--aiep-blue);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 1.65rem;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+}
+
+.session-code-card:not(.has-code) {
+  opacity: 0.64;
+}
+
 @keyframes qr-pulse {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }

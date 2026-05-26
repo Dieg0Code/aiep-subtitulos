@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="aiep_navy">#FF003B70</color>
+    <color name="aiep_navy_deep">#FF00528F</color>
+    <color name="aiep_red">#FFD71920</color>
+    <color name="aiep_cream">#FFF4EFE6</color>
+    <color name="aiep_cream_soft">#FFFBF8F2</color>
+    <color name="aiep_surface">#FFFFFFFF</color>
+    <color name="aiep_ink">#FF12212F</color>
+</resources>
