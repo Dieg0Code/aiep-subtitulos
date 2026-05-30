@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.firebase.appdistribution")
 }
+
+// Release signing is read from keystore.properties (gitignored). When the file is
+// absent (other devs / CI), release falls back to the debug key so the build still works.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val hasReleaseKeystore = keystoreProps.getProperty("storeFile") != null
 
 android {
     namespace = "cl.aiep.subtitulos"
@@ -21,18 +32,39 @@ android {
             enableV1Signing = true
             enableV2Signing = true
         }
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(
+                if (hasReleaseKeystore) "release" else "debug",
+            )
             isMinifyEnabled = false
             isDebuggable = false
+
+            firebaseAppDistribution {
+                appId = "1:37258064848:android:9662f2f53c89174249bfd5"
+                groups = "profes"
+                releaseNotesFile = "$rootDir/release-notes.txt"
+            }
         }
     }
 
     lint {
-        disable += "Instantiatable"
+        // Instantiatable: the android.print shim is intentional (see CLAUDE.md).
+        // InvalidFragmentVersionForActivityResult: false positive — MainActivity is a
+        // ComponentActivity using activity-compose, not a Fragment.
+        disable += setOf("Instantiatable", "InvalidFragmentVersionForActivityResult")
     }
 }
 

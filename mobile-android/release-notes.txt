@@ -1,0 +1,4 @@
+AIEP Subtítulos 0.2.0
+- Captura de clase con pantalla bloqueada
+- Sesiones locales y descarga de material (PDF / Word)
+- Material mejorado con IA (ChatGPT o API key)

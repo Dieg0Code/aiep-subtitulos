@@ -1,0 +1,8 @@
+# Release signing — NEVER commit these
+keystore/
+keystore.properties
+*.jks
+*.keystore
+
+# Firebase service-account credentials (if ever added)
+firebase-service-account.json
