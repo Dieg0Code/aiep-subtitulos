@@ -3,18 +3,29 @@ const path = require("path");
 const zlib = require("zlib");
 
 const source = path.resolve("docs/oficiales-concurso-innovacion-docente-2026/CARTA DE APOYO.docx");
-const target = path.resolve("docs/oficiales-concurso-innovacion-docente-2026/CARTA DE APOYO - Aula Subtitulada AIEP.docx");
+const variants = [
+  {
+    target: path.resolve("docs/oficiales-concurso-innovacion-docente-2026/CARTA DE APOYO - Aula Subtitulada AIEP.docx"),
+    role: "Directora Académica",
+  },
+  {
+    target: path.resolve("docs/oficiales-concurso-innovacion-docente-2026/CARTA DE APOYO - Aula Subtitulada AIEP - Director Academico.docx"),
+    role: "Director Académico",
+  },
+];
 
-const replacements = new Map([
-  ["Ciudad, día mes del año", "Osorno, ____ de __________ de 2026"],
-  ["“(director/a académico", "“Directora Académica"],
-  ["“Directora Académica)”", "“Directora Académica”"],
-  ["<w:t>)” de AIEP", "<w:t>” de AIEP"],
-  [" o sub/director/a académico", ""],
-  ["(Nombre Sede)", "Sede Osorno"],
-  ["proyecto “(Nombre proyecto)”", "proyecto “Aula Subtitulada AIEP: subtítulos flotantes en tiempo real para clases inclusivas”"],
-  ["representante (nombre docente)", "representante Diego Matías Obando Aguilera"],
-]);
+function replacementsFor(role) {
+  return new Map([
+    ["Ciudad, día mes del año", "Osorno, ____ de __________ de 2026"],
+    ["“(director/a académico", `“${role}`],
+    [`“${role})”`, `“${role}”`],
+    ["<w:t>)” de AIEP", "<w:t>” de AIEP"],
+    [" o sub/director/a académico", ""],
+    ["(Nombre Sede)", "Sede Osorno"],
+    ["proyecto “(Nombre proyecto)”", "proyecto “Aula Subtitulada AIEP: subtítulos flotantes en tiempo real para clases inclusivas”"],
+    ["representante (nombre docente)", "representante Diego Matías Obando Aguilera"],
+  ]);
+}
 
 function crc32(buf) {
   let table = crc32.table;
@@ -122,15 +133,17 @@ function parseZip(buffer) {
   return files;
 }
 
-const files = parseZip(fs.readFileSync(source));
-const document = files.find((file) => file.name === "word/document.xml");
-if (!document) throw new Error("word/document.xml not found");
+for (const variant of variants) {
+  const files = parseZip(fs.readFileSync(source));
+  const document = files.find((file) => file.name === "word/document.xml");
+  if (!document) throw new Error("word/document.xml not found");
 
-let xml = document.data.toString("utf8");
-for (const [from, to] of replacements.entries()) {
-  xml = xml.replaceAll(from, to);
+  let xml = document.data.toString("utf8");
+  for (const [from, to] of replacementsFor(variant.role).entries()) {
+    xml = xml.replaceAll(from, to);
+  }
+  document.data = Buffer.from(xml, "utf8");
+
+  fs.writeFileSync(variant.target, makeZip(files));
+  console.log(variant.target);
 }
-document.data = Buffer.from(xml, "utf8");
-
-fs.writeFileSync(target, makeZip(files));
-console.log(target);
