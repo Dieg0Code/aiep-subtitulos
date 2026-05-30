@@ -16,7 +16,8 @@ enum class AiProviderMode(val prefValue: String, val label: String) {
     Auto("auto", "Auto"),
     GitHubModels("github_models", "GitHub Models"),
     OpenAI("openai", "OpenAI"),
-    Anthropic("anthropic", "Anthropic");
+    Anthropic("anthropic", "Anthropic"),
+    OpenAiChatGpt("openai_chatgpt", "ChatGPT (suscripción)");
 
     companion object {
         fun fromPrefValue(value: String?): AiProviderMode =
@@ -58,6 +59,7 @@ data class AiProviderConfig(
                 AiProviderMode.GitHubModels -> "openai/gpt-4.1"
                 AiProviderMode.OpenAI -> "gpt-4.1"
                 AiProviderMode.Anthropic -> "claude-sonnet-4-5"
+                AiProviderMode.OpenAiChatGpt -> "gpt-5"
                 AiProviderMode.Auto -> "gpt-4.1"
             }
         }
@@ -114,6 +116,8 @@ class AiProviderClient(
                 model = model,
                 prompt = prompt,
             )
+            AiProviderMode.OpenAiChatGpt ->
+                error("ChatGPT subscription is handled by ChatGptClient, not AiProviderClient")
             AiProviderMode.Auto -> error("Provider must be resolved before building request")
         }
     }
@@ -201,6 +205,7 @@ class AiProviderClient(
                     }
                 }.trim()
             }
+            AiProviderMode.OpenAiChatGpt -> ""
             AiProviderMode.Auto -> ""
         }
     }

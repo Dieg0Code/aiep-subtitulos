@@ -25,7 +25,29 @@
 
     <string name="action_start">Iniciar micrófono</string>
     <string name="action_stop">Detener micrófono</string>
-    <string name="action_download_pdf">Descargar PDF</string>
+    <string name="action_download_pdf">Descargar material</string>
+
+    <string name="export_sheet_title">Descargar material</string>
+    <string name="export_sheet_subtitle">Elige el contenido y el formato.</string>
+    <string name="export_content_label">Contenido</string>
+    <string name="export_content_ai">Mejorado con IA</string>
+    <string name="export_content_ai_desc">Resumen, ideas clave y conceptos, ordenados</string>
+    <string name="export_content_raw">Crudo</string>
+    <string name="export_content_raw_desc">Transcripción original con marcas de tiempo</string>
+    <string name="export_format_label">Formato</string>
+    <string name="export_format_pdf">PDF</string>
+    <string name="export_format_pdf_desc">Ideal para leer e imprimir</string>
+    <string name="export_format_word">Word</string>
+    <string name="export_format_word_desc">Editable en Word (.docx)</string>
+    <string name="export_action_download">Descargar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="export_ai_requires_token">Requiere token IA en Ajustes</string>
+    <string name="export_status_preparing">Preparando documento…</string>
+    <string name="export_status_ai">Mejorando con IA…</string>
+    <string name="export_status_pdf">Generando PDF…</string>
+    <string name="export_status_word">Generando Word…</string>
+    <string name="export_error_generic">No se pudo preparar el documento</string>
+    <string name="export_error_ai">No se pudo usar IA. Se generará el documento crudo.</string>
 
     <string name="hint_lock_screen">Bloquea la pantalla y habla. La notificación persistente mantiene el micrófono activo.</string>
 
@@ -47,6 +69,15 @@
     <string name="settings_mode_helper">Las nuevas sesiones usarán este modo por defecto.</string>
     <string name="settings_section_connection">Conexión</string>
     <string name="settings_relay_helper">URL del relay. Cámbiala solo si tu organización usa un servidor distinto.</string>
+    <string name="settings_chatgpt_title">Conectar con ChatGPT</string>
+    <string name="settings_chatgpt_desc">Usa tu suscripción de ChatGPT (Plus/Pro) para la IA, sin API key.</string>
+    <string name="settings_chatgpt_connect">Conectar con ChatGPT</string>
+    <string name="settings_chatgpt_connecting">Conectando…</string>
+    <string name="settings_chatgpt_connected">Conectado · usa tu suscripción de ChatGPT</string>
+    <string name="settings_chatgpt_disconnect">Desconectar</string>
+    <string name="settings_chatgpt_ok">ChatGPT conectado</string>
+    <string name="settings_chatgpt_error">No se pudo conectar con ChatGPT</string>
+
     <string name="settings_section_battery">Ahorro de batería</string>
     <string name="settings_battery_on">Optimización activa · podría cortar la transcripción con pantalla bloqueada.</string>
     <string name="settings_battery_off">Esta app está excluida del optimizador de batería.</string>

@@ -63,6 +63,59 @@ class StudyExportTest {
     }
 
     @Test
+    fun docxFileNameUsesExtension() {
+        val name = StudyPdfFileName.build(
+            sessionName = "Clase motor",
+            now = 1_735_689_600_000L,
+            extension = "docx",
+        )
+        assertTrue(name.endsWith(".docx"))
+        assertTrue(name.startsWith("aiep-subtitulos-clase-motor-"))
+    }
+
+    @Test
+    fun markdownToHtmlConvertsStructureAndDropsTitle() {
+        val html = MarkdownToHtml.render("# Título\n## Sección\n- punto **uno**\npárrafo")
+
+        assertTrue("first H1 is the cover title and must be dropped", !html.contains("<h1>"))
+        assertTrue(html.contains("<h2>Sección</h2>"))
+        assertTrue(html.contains("<ul>"))
+        assertTrue(html.contains("<strong>uno</strong>"))
+        assertTrue(html.contains("<p>párrafo</p>"))
+    }
+
+    @Test
+    fun markdownToHtmlEscapesSpecialChars() {
+        assertEquals("a &amp; b &lt;c&gt;", MarkdownToHtml.escape("a & b <c>"))
+        assertTrue(MarkdownToHtml.render("5 < 6 & 7").contains("5 &lt; 6 &amp; 7"))
+    }
+
+    @Test
+    fun docxParagraphForLineMapsTypes() {
+        assertTrue(DocxXml.paragraphForLine("## Tema").contains("w:val=\"Heading2\""))
+        assertTrue(DocxXml.paragraphForLine("- item").contains("ListParagraph"))
+        assertEquals("", DocxXml.paragraphForLine("   "))
+
+        val bold = DocxXml.paragraphForLine("hola **fuerte**")
+        assertTrue(bold.contains("<w:b/>"))
+        assertTrue(bold.contains("fuerte"))
+    }
+
+    @Test
+    fun docxEscapesXml() {
+        assertEquals("a &amp; b &lt;c&gt; &quot;d&quot;", DocxXml.escape("a & b <c> \"d\""))
+    }
+
+    @Test
+    fun docxBodyDropsFirstTitle() {
+        val body = DocxXml.body("# Clase\n## Tema\ntexto")
+
+        assertTrue("title goes in the branded block, not the body", !body.contains(">Clase<"))
+        assertTrue(body.contains("Heading2"))
+        assertTrue(body.contains("texto"))
+    }
+
+    @Test
     fun parsesProviderResponses() {
         val client = AiProviderClient(AiProviderConfig("token", AiProviderMode.OpenAI, ""))
         val chatJson = """{"choices":[{"message":{"content":"# Clase\nContenido"}}]}"""

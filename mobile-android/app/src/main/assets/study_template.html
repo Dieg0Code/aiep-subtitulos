@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  @font-face {
+    font-family: 'Ubuntu';
+    font-weight: 400;
+    src: url('fonts/Ubuntu-Regular.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'Ubuntu';
+    font-weight: 500;
+    src: url('fonts/Ubuntu-Medium.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'Ubuntu';
+    font-weight: 700;
+    src: url('fonts/Ubuntu-Bold.ttf') format('truetype');
+  }
+
+  :root {
+    --navy: #003B70;
+    --navy-deep: #00528F;
+    --red: #D71920;
+    --ink: #12212F;
+    --muted: #647385;
+    --cream: #F4EFE6;
+    --cream-soft: #FBF8F2;
+    --line: rgba(0, 59, 112, 0.14);
+  }
+
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    font-family: 'Ubuntu', 'Trebuchet MS', 'Segoe UI', Roboto, system-ui, sans-serif;
+    color: var(--ink);
+    font-size: 11pt;
+    line-height: 1.62;
+  }
+
+  /* ===================== COVER ===================== */
+  .cover { margin-bottom: 6px; }
+
+  .brand-row { margin-bottom: 30px; }
+  .brand-row .logo { height: 46px; width: auto; display: block; }
+  .brand-row .wordmark { color: var(--navy); font-weight: 700; font-size: 30px; line-height: 1; }
+  .brand-row .wordmark .sub { display: block; font-size: 10px; font-weight: 500; color: var(--navy); }
+
+  .cover-head { margin-bottom: 36px; }
+  .kicker {
+    font-size: 11.5px; font-weight: 700; letter-spacing: 1.6px;
+    text-transform: uppercase; color: var(--red); margin-bottom: 12px;
+  }
+  .cover-title {
+    font-size: 42px; line-height: 1.08; font-weight: 700;
+    color: var(--navy); margin: 0 0 18px 0; max-width: 96%;
+  }
+  .accent-bar {
+    width: 96px; height: 5px; background: var(--red);
+    border-radius: 3px; margin-bottom: 20px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    background: var(--cream-soft);
+    border: 1px solid var(--line);
+    color: var(--navy);
+    font-size: 10.5px; font-weight: 600;
+    padding: 6px 13px; border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  /* Índice */
+  .toc {
+    background: var(--cream-soft);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 20px 6px 20px;
+  }
+  .toc-title {
+    font-size: 11.5px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--red); margin-bottom: 10px;
+  }
+  .toc-list { list-style: none; margin: 0; padding: 0; }
+  .toc-list li {
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 9px 2px; border-bottom: 1px solid var(--line);
+  }
+  .toc-list li:last-child { border-bottom: none; }
+  .toc-num { font-weight: 700; color: var(--red); font-size: 12.5px; min-width: 22px; }
+  .toc-text { color: var(--navy); font-weight: 500; font-size: 12.5px; }
+
+  /* ===================== CONTENT ===================== */
+  .content h1 {
+    font-weight: 700; font-size: 20px; color: var(--navy);
+    margin: 24px 0 12px 0;
+  }
+  .content h2 {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 30px 0 14px 0;
+    padding-bottom: 9px;
+    border-bottom: 2px solid var(--line);
+    page-break-after: avoid;
+  }
+  .content h2:first-child { margin-top: 26px; }
+  .content h2 .sec-num {
+    flex: 0 0 auto;
+    font-weight: 700; font-size: 12.5px; color: #fff;
+    background: var(--red);
+    border-radius: 6px;
+    padding: 3px 8px;
+    line-height: 1.15;
+  }
+  .content h2 .sec-text { font-weight: 700; font-size: 17px; color: var(--navy); }
+
+  .content h3 {
+    font-weight: 700; font-size: 13px; color: var(--navy-deep);
+    margin: 18px 0 8px 0;
+    page-break-after: avoid;
+  }
+  .content p { margin: 0 0 11px 0; }
+  .content ul, .content ol { margin: 0 0 12px 0; padding-left: 22px; }
+  .content li { margin: 0 0 7px 0; }
+  .content ul li::marker { color: var(--red); }
+  .content strong { font-weight: 700; color: var(--navy-deep); }
+
+  /* Conceptos y definiciones -> tarjetas */
+  .content ul.def-list { list-style: none; padding: 0; margin: 8px 0 14px 0; }
+  .content ul.def-list li {
+    background: var(--cream-soft);
+    border-left: 4px solid var(--navy);
+    border-radius: 0 8px 8px 0;
+    padding: 11px 15px;
+    margin: 0 0 9px 0;
+    page-break-inside: avoid;
+  }
+  .content ul.def-list li::marker { content: none; }
+  .content ul.def-list li strong { color: var(--navy); }
+
+  .doc-end {
+    margin-top: 26px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 9.5px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <section class="cover">
+    <div class="brand-row">{{BRAND}}</div>
+    <div class="cover-head">
+      <div class="kicker">Material de estudio</div>
+      <h1 class="cover-title">{{TITLE}}</h1>
+      <div class="accent-bar"></div>
+      <div class="chips">
+        <span class="chip">{{DATE}}</span>
+        <span class="chip">{{BADGE}}</span>
+        <span class="chip" id="chip-sections"></span>
+      </div>
+    </div>
+    <nav class="toc">
+      <div class="toc-title">Índice</div>
+      <ol id="toc-list" class="toc-list"></ol>
+    </nav>
+  </section>
+
+  <main class="content">
+    {{BODY}}
+    <div class="doc-end">AIEP Subtítulos · de la Universidad Andrés Bello</div>
+  </main>
+
+  <script>
+    (function () {
+      var heads = Array.prototype.slice.call(document.querySelectorAll('.content h2'));
+      var tocList = document.getElementById('toc-list');
+      heads.forEach(function (h, i) {
+        var n = (i + 1 < 10 ? '0' : '') + (i + 1);
+        var text = h.textContent.trim();
+
+        h.textContent = '';
+        var num = document.createElement('span');
+        num.className = 'sec-num';
+        num.textContent = n;
+        var span = document.createElement('span');
+        span.className = 'sec-text';
+        span.textContent = text;
+        h.appendChild(num);
+        h.appendChild(span);
+
+        if (tocList) {
+          var li = document.createElement('li');
+          var bn = document.createElement('span');
+          bn.className = 'toc-num';
+          bn.textContent = n;
+          var bt = document.createElement('span');
+          bt.className = 'toc-text';
+          bt.textContent = text;
+          li.appendChild(bn);
+          li.appendChild(bt);
+          tocList.appendChild(li);
+        }
+
+        if (/concepto|definici/i.test(text)) {
+          var el = h.nextElementSibling;
+          if (el && el.tagName === 'UL') { el.classList.add('def-list'); }
+        }
+      });
+
+      var chip = document.getElementById('chip-sections');
+      if (chip) {
+        if (heads.length > 0) { chip.textContent = heads.length + ' secciones'; }
+        else { chip.parentNode.removeChild(chip); }
+      }
+    })();
+  </script>
+</body>
+</html>

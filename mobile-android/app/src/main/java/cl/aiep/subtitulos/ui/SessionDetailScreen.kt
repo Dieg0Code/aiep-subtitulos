@@ -26,8 +26,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.annotation.DrawableRes
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,10 +78,13 @@ import cl.aiep.subtitulos.audio.AudioLevelBus
 import cl.aiep.subtitulos.audio.CaptionPacer
 import cl.aiep.subtitulos.audio.CaptionPacerSnapshot
 import cl.aiep.subtitulos.audio.CaptionPreviewBus
+import cl.aiep.subtitulos.ai.ChatGptClient
 import cl.aiep.subtitulos.export.AiProviderClient
 import cl.aiep.subtitulos.export.AiProviderConfig
+import cl.aiep.subtitulos.export.AiProviderMode
 import cl.aiep.subtitulos.export.PdfShare
-import cl.aiep.subtitulos.export.StudyPdfGenerator
+import cl.aiep.subtitulos.export.StudyDocxGenerator
+import cl.aiep.subtitulos.export.StudyPdfExporter
 import cl.aiep.subtitulos.prefs.AppPreferences
 import cl.aiep.subtitulos.qr.QrPayload
 import cl.aiep.subtitulos.sessions.ActiveSessionTracker
@@ -126,6 +131,7 @@ fun SessionDetailScreen(
     var localOnly by remember(sessionId) { mutableStateOf(false) }
     var pdfBusy by remember(sessionId) { mutableStateOf(false) }
     var pdfStatus by remember(sessionId) { mutableStateOf<String?>(null) }
+    var showExportSheet by remember(sessionId) { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     val canStart = !otherActive && meta != null && (localOnly || sessionCode.text.trim().length == 6)
@@ -223,59 +229,8 @@ fun SessionDetailScreen(
             if (meta != null && !streaming && meta.mode == CaptureMode.Speech && meta.captionCount > 0) {
                 StudyPdfAction(
                     busy = pdfBusy,
-                    status = pdfStatus,
-                    onClick = {
-                        coroutineScope.launch {
-                            pdfBusy = true
-                            pdfStatus = "Preparando PDF..."
-                            val rawMarkdown = runCatching { repo.readMarkdown(sessionId) }
-                                .getOrDefault("")
-                            val aiConfig = AiProviderConfig(
-                                token = prefs.aiToken.trim(),
-                                providerMode = prefs.aiProviderMode,
-                                modelOverride = prefs.aiModelOverride,
-                            )
-                            val studyMarkdown = if (aiConfig.hasToken) {
-                                runCatching {
-                                    AiProviderClient(aiConfig)
-                                        .createStudyMarkdown(meta.name, rawMarkdown)
-                                }.onFailure { error ->
-                                    Toast.makeText(
-                                        context,
-                                        "${error.message ?: "No se pudo usar IA"}. Se generara PDF crudo.",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
-                                }.getOrNull()
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Sin token IA: se generara PDF crudo AIEP.",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                null
-                            }
-
-                            runCatching {
-                                val file = withContext(Dispatchers.IO) {
-                                    val generator = StudyPdfGenerator(context)
-                                    if (studyMarkdown.isNullOrBlank()) {
-                                        generator.generateRaw(meta.name, rawMarkdown)
-                                    } else {
-                                        generator.generate(meta.name, studyMarkdown)
-                                    }
-                                }
-                                PdfShare.share(context, file)
-                            }.onFailure { error ->
-                                Toast.makeText(
-                                    context,
-                                    error.message ?: "No se pudo preparar el PDF",
-                                    Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                            pdfBusy = false
-                            pdfStatus = null
-                        }
-                    },
+                    busyLabel = pdfStatus,
+                    onClick = { showExportSheet = true },
                 )
             }
 
@@ -293,64 +248,373 @@ fun SessionDetailScreen(
             },
         )
     }
+
+    if (showExportSheet && meta != null) {
+        val sessionName = meta.name
+        val chatGptTokens = prefs.chatGptTokens
+        val useChatGpt = chatGptTokens != null && (
+            prefs.aiProviderMode == AiProviderMode.OpenAiChatGpt ||
+                (prefs.aiProviderMode == AiProviderMode.Auto && prefs.aiToken.isBlank())
+            )
+        ExportOptionsSheet(
+            hasAiToken = prefs.aiToken.trim().isNotEmpty() || chatGptTokens != null,
+            onDismiss = { showExportSheet = false },
+            onDownload = { content, format ->
+                showExportSheet = false
+                coroutineScope.launch {
+                    pdfBusy = true
+                    pdfStatus = context.getString(R.string.export_status_preparing)
+                    val rawMarkdown = runCatching { repo.readMarkdown(sessionId) }.getOrDefault("")
+                    val aiConfig = AiProviderConfig(
+                        token = prefs.aiToken.trim(),
+                        providerMode = prefs.aiProviderMode,
+                        modelOverride = prefs.aiModelOverride,
+                    )
+                    val studyMarkdown = if (content == ExportContent.Ai) {
+                        pdfStatus = context.getString(R.string.export_status_ai)
+                        when {
+                            useChatGpt && chatGptTokens != null -> runCatching {
+                                val result = ChatGptClient
+                                    .createStudyMarkdown(sessionName, rawMarkdown, chatGptTokens)
+                                    .getOrThrow()
+                                if (result.tokens != chatGptTokens) {
+                                    AppPreferences.setChatGptTokens(context, result.tokens)
+                                }
+                                result.markdown
+                            }.onFailure {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.export_error_ai),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }.getOrNull()
+
+                            aiConfig.hasToken -> runCatching {
+                                AiProviderClient(aiConfig).createStudyMarkdown(sessionName, rawMarkdown)
+                            }.onFailure {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.export_error_ai),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }.getOrNull()
+
+                            else -> null
+                        }
+                    } else {
+                        null
+                    }
+
+                    runCatching {
+                        when (format) {
+                            ExportFormat.Pdf -> {
+                                pdfStatus = context.getString(R.string.export_status_pdf)
+                                val exporter = StudyPdfExporter(context)
+                                val file = if (studyMarkdown.isNullOrBlank()) {
+                                    exporter.generateRaw(sessionName, rawMarkdown)
+                                } else {
+                                    exporter.generate(sessionName, studyMarkdown)
+                                }
+                                PdfShare.share(context, file, PdfShare.MIME_PDF)
+                            }
+                            ExportFormat.Docx -> {
+                                pdfStatus = context.getString(R.string.export_status_word)
+                                val file = withContext(Dispatchers.IO) {
+                                    val generator = StudyDocxGenerator(context)
+                                    if (studyMarkdown.isNullOrBlank()) {
+                                        generator.generateRaw(sessionName, rawMarkdown)
+                                    } else {
+                                        generator.generate(sessionName, studyMarkdown)
+                                    }
+                                }
+                                PdfShare.share(context, file, PdfShare.MIME_DOCX)
+                            }
+                        }
+                    }.onFailure { error ->
+                        Toast.makeText(
+                            context,
+                            error.message ?: context.getString(R.string.export_error_generic),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    pdfBusy = false
+                    pdfStatus = null
+                }
+            },
+        )
+    }
+}
+
+private enum class ExportContent { Ai, Raw }
+
+private enum class ExportFormat { Pdf, Docx }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportOptionsSheet(
+    hasAiToken: Boolean,
+    onDismiss: () -> Unit,
+    onDownload: (ExportContent, ExportFormat) -> Unit,
+) {
+    var content by remember {
+        mutableStateOf(if (hasAiToken) ExportContent.Ai else ExportContent.Raw)
+    }
+    var format by remember { mutableStateOf(ExportFormat.Pdf) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = AiepSurface,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.export_sheet_title),
+                    color = AiepNavy,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    text = stringResource(R.string.export_sheet_subtitle),
+                    color = AiepMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExportGroupLabel(text = stringResource(R.string.export_content_label))
+                ExportOptionCard(
+                    icon = R.drawable.ic_sparkles_24,
+                    title = stringResource(R.string.export_content_ai),
+                    subtitle = stringResource(R.string.export_content_ai_desc),
+                    selected = content == ExportContent.Ai,
+                    enabled = hasAiToken,
+                    accent = AiepAmber,
+                    onClick = { content = ExportContent.Ai },
+                )
+                ExportOptionCard(
+                    icon = R.drawable.ic_article_24,
+                    title = stringResource(R.string.export_content_raw),
+                    subtitle = stringResource(R.string.export_content_raw_desc),
+                    selected = content == ExportContent.Raw,
+                    enabled = true,
+                    onClick = { content = ExportContent.Raw },
+                )
+                if (!hasAiToken) {
+                    Text(
+                        text = stringResource(R.string.export_ai_requires_token),
+                        color = AiepMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExportGroupLabel(text = stringResource(R.string.export_format_label))
+                ExportOptionCard(
+                    icon = R.drawable.ic_picture_as_pdf_24,
+                    title = stringResource(R.string.export_format_pdf),
+                    subtitle = stringResource(R.string.export_format_pdf_desc),
+                    selected = format == ExportFormat.Pdf,
+                    enabled = true,
+                    onClick = { format = ExportFormat.Pdf },
+                )
+                ExportOptionCard(
+                    icon = R.drawable.ic_description_24,
+                    title = stringResource(R.string.export_format_word),
+                    subtitle = stringResource(R.string.export_format_word_desc),
+                    selected = format == ExportFormat.Docx,
+                    enabled = true,
+                    onClick = { format = ExportFormat.Docx },
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(text = stringResource(R.string.action_cancel), color = AiepNavy)
+                }
+                Button(
+                    onClick = { onDownload(content, format) },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AiepNavy,
+                        contentColor = AiepSurface,
+                    ),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(text = stringResource(R.string.export_action_download))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun ExportGroupLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        color = AiepMuted,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.5.sp,
+    )
+}
+
+@Composable
+private fun ExportOptionCard(
+    @DrawableRes icon: Int,
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    accent: Color? = null,
+) {
+    val borderColor = if (selected && enabled) AiepNavy else AiepLine
+    val borderWidth = if (selected && enabled) 1.5.dp else 1.dp
+    val background = when {
+        !enabled -> AiepCreamSoft.copy(alpha = 0.5f)
+        selected -> AiepNavy.copy(alpha = 0.06f)
+        else -> AiepSurface
+    }
+    val titleColor = if (enabled) AiepNavy else AiepMuted
+    val iconTint = when {
+        !enabled -> AiepMuted.copy(alpha = 0.5f)
+        accent != null -> accent
+        selected -> AiepNavy
+        else -> AiepMuted
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(background)
+            .border(borderWidth, borderColor, RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(13.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (selected && enabled) AiepSurface else AiepCreamSoft),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(id = icon),
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = title,
+                color = titleColor,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = subtitle,
+                color = AiepMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .border(2.dp, if (selected && enabled) AiepNavy else AiepLine, CircleShape)
+                .background(if (selected && enabled) AiepNavy else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected && enabled) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(AiepSurface),
+                )
+            }
+        }
+    }
 }
 
 @Composable
 private fun StudyPdfAction(
     busy: Boolean,
-    status: String?,
+    busyLabel: String?,
     onClick: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+    Button(
+        onClick = onClick,
+        enabled = !busy,
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = AiepNavy,
+            contentColor = AiepSurface,
+            disabledContainerColor = AiepNavy,
+            disabledContentColor = AiepSurface,
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp,
+            focusedElevation = 0.dp,
+            hoveredElevation = 0.dp,
+            disabledElevation = 0.dp,
+        ),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
     ) {
-        Button(
-            onClick = onClick,
-            enabled = !busy,
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = AiepNavy,
-                contentColor = AiepSurface,
-                disabledContainerColor = AiepNavy.copy(alpha = 0.32f),
-                disabledContentColor = AiepSurface.copy(alpha = 0.7f),
-            ),
-            elevation = ButtonDefaults.buttonElevation(
-                defaultElevation = 0.dp,
-                pressedElevation = 0.dp,
-                focusedElevation = 0.dp,
-                hoveredElevation = 0.dp,
-                disabledElevation = 0.dp,
-            ),
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = AiepSurface,
+                    strokeWidth = 2.dp,
+                )
+                Text(
+                    text = busyLabel ?: stringResource(R.string.export_status_preparing),
+                    color = AiepSurface,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            } else {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_download_24),
+                    contentDescription = null,
+                    tint = AiepSurface,
+                    modifier = Modifier.size(20.dp),
+                )
                 Text(
                     text = stringResource(R.string.action_download_pdf),
                     color = AiepSurface,
                     style = MaterialTheme.typography.labelLarge,
                 )
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_sparkles_24),
-                    contentDescription = null,
-                    tint = if (busy) AiepSurface.copy(alpha = 0.6f) else AiepAmber,
-                    modifier = Modifier.size(18.dp),
-                )
             }
-        }
-        if (status != null) {
-            Text(
-                text = status,
-                color = AiepMuted,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
         }
     }
 }

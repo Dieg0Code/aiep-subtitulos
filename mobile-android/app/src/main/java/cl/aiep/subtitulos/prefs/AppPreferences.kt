@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import cl.aiep.subtitulos.CaptureMode
 import cl.aiep.subtitulos.DEFAULT_RELAY_URL
+import cl.aiep.subtitulos.ai.ChatGptTokens
 import cl.aiep.subtitulos.export.AiProviderMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -20,6 +22,10 @@ object AppPreferences {
     private val AI_TOKEN_KEY = stringPreferencesKey("ai_token")
     private val AI_PROVIDER_MODE_KEY = stringPreferencesKey("ai_provider_mode")
     private val AI_MODEL_OVERRIDE_KEY = stringPreferencesKey("ai_model_override")
+    private val CHATGPT_ACCESS_KEY = stringPreferencesKey("chatgpt_access_token")
+    private val CHATGPT_REFRESH_KEY = stringPreferencesKey("chatgpt_refresh_token")
+    private val CHATGPT_ACCOUNT_KEY = stringPreferencesKey("chatgpt_account_id")
+    private val CHATGPT_EXPIRES_KEY = longPreferencesKey("chatgpt_expires_at")
     private val BATTERY_DISMISSED_KEY = booleanPreferencesKey("battery_prompt_dismissed")
     private val SESSIONS_INDEX_KEY = stringPreferencesKey("sessions_index")
 
@@ -29,6 +35,7 @@ object AppPreferences {
         val aiToken: String = "",
         val aiProviderMode: AiProviderMode = AiProviderMode.Auto,
         val aiModelOverride: String = "",
+        val chatGptTokens: ChatGptTokens? = null,
         val batteryPromptDismissed: Boolean = false,
     )
 
@@ -40,6 +47,14 @@ object AppPreferences {
                 aiToken = prefs[AI_TOKEN_KEY] ?: prefs[GITHUB_MODELS_TOKEN_KEY].orEmpty(),
                 aiProviderMode = AiProviderMode.fromPrefValue(prefs[AI_PROVIDER_MODE_KEY]),
                 aiModelOverride = prefs[AI_MODEL_OVERRIDE_KEY].orEmpty(),
+                chatGptTokens = prefs[CHATGPT_ACCESS_KEY]?.takeIf { it.isNotBlank() }?.let { access ->
+                    ChatGptTokens(
+                        accessToken = access,
+                        refreshToken = prefs[CHATGPT_REFRESH_KEY].orEmpty(),
+                        accountId = prefs[CHATGPT_ACCOUNT_KEY].orEmpty(),
+                        expiresAtMs = prefs[CHATGPT_EXPIRES_KEY] ?: 0L,
+                    )
+                },
                 batteryPromptDismissed = prefs[BATTERY_DISMISSED_KEY] ?: false,
             )
         }
@@ -74,6 +89,24 @@ object AppPreferences {
             val trimmed = model.trim()
             if (trimmed.isEmpty()) prefs.remove(AI_MODEL_OVERRIDE_KEY)
             else prefs[AI_MODEL_OVERRIDE_KEY] = trimmed
+        }
+    }
+
+    suspend fun setChatGptTokens(context: Context, tokens: ChatGptTokens) {
+        context.prefsStore.edit { prefs ->
+            prefs[CHATGPT_ACCESS_KEY] = tokens.accessToken
+            prefs[CHATGPT_REFRESH_KEY] = tokens.refreshToken
+            prefs[CHATGPT_ACCOUNT_KEY] = tokens.accountId
+            prefs[CHATGPT_EXPIRES_KEY] = tokens.expiresAtMs
+        }
+    }
+
+    suspend fun clearChatGptTokens(context: Context) {
+        context.prefsStore.edit { prefs ->
+            prefs.remove(CHATGPT_ACCESS_KEY)
+            prefs.remove(CHATGPT_REFRESH_KEY)
+            prefs.remove(CHATGPT_ACCOUNT_KEY)
+            prefs.remove(CHATGPT_EXPIRES_KEY)
         }
     }
 

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,12 +16,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -49,6 +52,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cl.aiep.subtitulos.CaptureMode
 import cl.aiep.subtitulos.R
+import cl.aiep.subtitulos.ai.ChatGptOAuth
 import cl.aiep.subtitulos.export.AiProviderDetector
 import cl.aiep.subtitulos.export.AiProviderMode
 import cl.aiep.subtitulos.prefs.AppPreferences
@@ -72,6 +76,7 @@ fun SettingsScreen() {
     var aiAdvancedExpanded by remember { mutableStateOf(false) }
     var tokenDraft by remember { mutableStateOf(TextFieldValue("")) }
     var modelDraft by remember { mutableStateOf(TextFieldValue("")) }
+    var chatGptConnecting by remember { mutableStateOf(false) }
     LaunchedEffect(prefs.relayUrl) {
         if (relayUrl.text != prefs.relayUrl) {
             relayUrl = TextFieldValue(prefs.relayUrl, selection = TextRange(prefs.relayUrl.length))
@@ -132,6 +137,44 @@ fun SettingsScreen() {
             }
 
             SettingsCard(title = "IA experimental") {
+                ChatGptConnectRow(
+                    connected = prefs.chatGptTokens != null,
+                    connecting = chatGptConnecting,
+                    onConnect = {
+                        if (chatGptConnecting) return@ChatGptConnectRow
+                        chatGptConnecting = true
+                        coroutineScope.launch {
+                            ChatGptOAuth.login(context)
+                                .onSuccess { tokens ->
+                                    AppPreferences.setChatGptTokens(context, tokens)
+                                    AppPreferences.setAiProviderMode(
+                                        context,
+                                        AiProviderMode.OpenAiChatGpt,
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.settings_chatgpt_ok),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                                .onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.settings_chatgpt_error),
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            chatGptConnecting = false
+                        }
+                    },
+                    onDisconnect = {
+                        coroutineScope.launch {
+                            AppPreferences.clearChatGptTokens(context)
+                            AppPreferences.setAiProviderMode(context, AiProviderMode.Auto)
+                        }
+                    },
+                )
+
                 AiTokenSettings(
                     expanded = aiExpanded,
                     advancedExpanded = aiAdvancedExpanded,
@@ -194,6 +237,83 @@ fun SettingsScreen() {
                     color = AiepMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatGptConnectRow(
+    connected: Boolean,
+    connecting: Boolean,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AiepCreamSoft, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = stringResource(R.string.settings_chatgpt_title),
+                color = AiepInk,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = if (connected) {
+                    stringResource(R.string.settings_chatgpt_connected)
+                } else {
+                    stringResource(R.string.settings_chatgpt_desc)
+                },
+                color = if (connected) AiepNavy else AiepMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (connected) {
+            OutlinedButton(
+                onClick = onDisconnect,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.settings_chatgpt_disconnect), color = AiepNavy)
+            }
+        } else {
+            Button(
+                onClick = onConnect,
+                enabled = !connecting,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AiepNavy,
+                    contentColor = AiepSurface,
+                    disabledContainerColor = AiepNavy,
+                    disabledContentColor = AiepSurface,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+            ) {
+                if (connecting) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = AiepSurface,
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            stringResource(R.string.settings_chatgpt_connecting),
+                            color = AiepSurface,
+                        )
+                    }
+                } else {
+                    Text(stringResource(R.string.settings_chatgpt_connect), color = AiepSurface)
+                }
             }
         }
     }
